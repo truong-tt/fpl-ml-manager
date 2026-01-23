@@ -11,30 +11,35 @@ OUTPUT_SQUAD = os.path.join(BASE, "optimal_squad_live.csv")
 
 
 def print_team(starters, bench, cap_id, vc_id):
-    """Display formatted team sheet."""
-    print("\n" + "="*70)
-    print(f"{'POS':<5} {'PLAYER':<25} {'TEAM':<15} {'PRICE':<6} {'XP'}")
-    print("="*70)
+    """Display formatted team sheet with clean visuals."""
+    print("\n" + "─" * 80)
+    print(" " * 25 + "FPL Squad Selection using ML Optimization")
+    print("─" * 80)
     
-    print("\n--- STARTING XI ---")
+    print("\nSTARTING XI (11 Players)")
+    print("─" * 80)
+    print(f"{'POS':<6} {'PLAYER':<24} {'TEAM':<14} {'PRICE':<8} {'XP':<8} {'ROLE':<8}")
+    print("─" * 80)
+    
     for _, p in starters.iterrows():
-        status = "(C)" if p['id'] == cap_id else "(V)" if p['id'] == vc_id else ""
-        name = f"{p['name']} {status}".strip()
-        print(f"{p['position']:<5} {name:<25} {p['team']:<15} £{p['price']:<5} {p['next_gw_xp']}")
-
-    print("\n--- BENCH ---")
-    for _, p in bench.iterrows():
-        print(f"{p['position']:<5} {p['name']:<25} {p['team']:<15} £{p['price']:<5} {p['next_gw_xp']}")
+        role = "CAPTAIN" if p['id'] == cap_id else "VICE-CAPTAIN" if p['id'] == vc_id else ""
+        print(f"{p['position']:<6} {p['name']:<24} {p['team']:<14} £{p['price']:<7} {p['next_gw_xp']:<7.1f} {role:<8}")
     
-    print("="*70)
+    print("\nSUBSTITUTES (4 Players)")
+    print("─" * 80)
+    print(f"{'POS':<6} {'PLAYER':<24} {'TEAM':<14} {'PRICE':<8} {'XP':<8}")
+    print("─" * 80)
+    
+    for _, p in bench.iterrows():
+        print(f"{p['position']:<6} {p['name']:<24} {p['team']:<14} £{p['price']:<7} {p['next_gw_xp']:<7.1f}")
+    
+    print("─" * 80 + "\n")
 
 
 def main():
-    print("\n=== FPL AI MANAGER ===")
-    
     # Check data exists
     if not os.path.exists(FIXTURES):
-        print("Error: Data not found. Run data_loader.py first.")
+        print("Error: Data files not found.")
         return
 
     # Find next gameweek
@@ -42,24 +47,17 @@ def main():
     next_gw = fixtures[~fixtures['finished']]['event'].min()
     
     if pd.isna(next_gw):
-        print("Error: No upcoming fixtures.")
         return
-    
-    print(f"Targeting GW{int(next_gw)}")
     
     # Initialize engine and predict
     engine = FPLEngine(FIXTURES, HISTORY, PLAYERS)
     
-    print("Predicting points...")
     preds = engine.train_and_predict(next_gw, horizon=3)
     if preds.empty:
-        print("Error: Prediction failed.")
         return
 
-    print("Optimizing squad...")
     squad = engine.optimize_squad(preds)
     if squad.empty:
-        print("Error: Optimization failed.")
         return
 
     # Pick team and format
@@ -76,7 +74,6 @@ def main():
     
     full_squad = engine.format_squad(squad)
     full_squad.to_csv(OUTPUT_SQUAD, index=False)
-    print(f"\nSquad saved to: {OUTPUT_SQUAD}")
 
 
 if __name__ == "__main__":
