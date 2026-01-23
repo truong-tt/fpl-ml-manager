@@ -1,0 +1,21 @@
+team_id,team_name,short_name,strength,strength_overall_home,strength_overall_away
+1,Arsenal,ARS,5,1300,1375
+2,Aston Villa,AVL,3,1145,1185
+3,Burnley,BUR,3,1055,1095
+4,Bournemouth,BOU,3,1150,1220
+5,Brentford,BRE,3,1135,1175
+6,Brighton,BHA,3,1150,1160
+7,Chelsea,CHE,3,1180,1190
+8,Crystal Palace,CRY,3,1165,1205
+9,Everton,EVE,3,1100,1130
+10,Fulham,FUL,3,1090,1130
+11,Leeds,LEE,3,1095,1145
+12,Liverpool,LIV,4,1230,1265
+13,Man City,MCI,4,1250,1305
+14,Man Utd,MUN,3,1135,1205
+15,Newcastle,NEW,3,1160,1220
+16,Nott'm Forest,NFO,3,1100,1130
+17,Sunderland,SUN,3,1100,1145
+18,Spurs,TOT,3,1165,1175
+19,West Ham,WHU,3,1075,1075
+20,Wolves,WOL,3,1070,1085
