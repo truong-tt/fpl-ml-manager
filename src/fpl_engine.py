@@ -16,11 +16,11 @@ STARTING_COUNTS = {1: 1, 2: 4, 3: 4, 4: 2}
 
 POS_MAP = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
 TEAM_MAP = {
-    1: "Arsenal", 2: "Aston Villa", 3: "Bournemouth", 4: "Brentford",
-    5: "Brighton", 6: "Chelsea", 7: "Crystal Palace", 8: "Everton",
-    9: "Fulham", 10: "Ipswich", 11: "Leicester", 12: "Liverpool",
+    1: "Arsenal", 2: "Aston Villa", 3: "Burnley", 4: "Bournemouth",
+    5: "Brentford", 6: "Brighton", 7: "Chelsea", 8: "Crystal Palace",
+    9: "Everton", 10: "Fulham", 11: "Leeds", 12: "Liverpool",
     13: "Man City", 14: "Man Utd", 15: "Newcastle", 16: "Nott'm Forest",
-    17: "Southampton", 18: "Spurs", 19: "West Ham", 20: "Wolves"
+    17: "Sunderland", 18: "Spurs", 19: "West Ham", 20: "Wolves"
 }
 
 
