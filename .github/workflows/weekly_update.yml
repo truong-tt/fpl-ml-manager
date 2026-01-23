@@ -31,10 +31,10 @@ jobs:
 
     - name: Run Optimization
       run: |
-        echo "```text" >> $GITHUB_STEP_SUMMARY
+        echo '```text' >> $GITHUB_STEP_SUMMARY
         python src/main.py | tee -a $GITHUB_STEP_SUMMARY
-        echo "```" >> $GITHUB_STEP_SUMMARY
-        
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
     - name: Commit and Push Changes
       run: |
         git config --global user.name "FPL Bot"
