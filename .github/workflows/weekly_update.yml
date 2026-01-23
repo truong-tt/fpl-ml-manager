@@ -14,7 +14,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4  # Updated to v4
+      uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -29,16 +29,27 @@ jobs:
     - name: Update Data
       run: python src/data_loader.py
 
-    - name: Run Optimization
+    - name: Run Optimization & Show Lineup
       run: |
+        # 1. Run the AI and capture output to a file AND console
+        python src/main.py > lineup_output.txt
+        cat lineup_output.txt
+
+        # 2. Add a title to the GitHub Summary Page
+        echo "## FPL AI Weekly Lineup" >> $GITHUB_STEP_SUMMARY
+        
+        # 3. Add the lineup inside a code block so it looks like a table
         echo '```text' >> $GITHUB_STEP_SUMMARY
-        python src/main.py | tee -a $GITHUB_STEP_SUMMARY
+        cat lineup_output.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Commit and Push Changes
       run: |
         git config --global user.name "FPL Bot"
         git config --global user.email "bot@noreply.github.com"
+        # Force add the squad file specifically to ensure it's tracked
+        git add data/processed/optimal_squad_live.csv
         git add data/processed/*.csv
+        # Commit if there are changes
         git diff --staged --quiet || git commit -m "Auto-update: Optimized Squad for GW $(date +'%Y-%m-%d')"
         git push
