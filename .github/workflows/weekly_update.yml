@@ -1,10 +1,10 @@
 name: FPL Weekly Update
 
-# Trigger: Runs every Friday at 10:00 UTC (approx 1 hour before deadline usually)
+# Trigger: Runs every Wednesday at 10:00 UTC
 
 on:
   schedule:
-    - cron: '0 10 * * 5'
+    - cron: '0 10 * * 3'
   workflow_dispatch:
 
 permissions:
