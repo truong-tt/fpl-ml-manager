@@ -2,7 +2,7 @@
 
 ## How to Check the Lineup
 
-The AI updates the squad every Friday via GitHub Actions.
+The AI updates the squad every Wednesday via GitHub Actions.
 
 - **View Squad:** Open `data/processed/optimal_squad_live.csv`. This table contains player names, teams, positions, and expected points (XP).
 - **View Starting XI:** Click the **Actions** tab, select the latest **FPL Weekly Update** run, and expand the **Run Optimization** step to see the **1-4-4-2** team sheet and captaincy.
