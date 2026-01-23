@@ -1,5 +1,12 @@
 # FPL ML Manager — Overview (25/26)
 
+## How to Check the Lineup
+
+The AI updates the squad every Friday via GitHub Actions.
+
+- **View Squad:** Open `data/processed/optimal_squad_live.csv`. This table contains player names, teams, positions, and expected points (XP).
+- **View Starting XI:** Click the **Actions** tab, select the latest **FPL Weekly Update** run, and expand the **Run Optimization** step to see the **1-4-4-2** team sheet and captaincy.
+
 This project predicts Fantasy Premier League points and uses those predictions to help pick an optimal squad and starting XI.
 
 ## 1) FPL Scoring (Quick Reference 25/26)
@@ -55,7 +62,7 @@ This project predicts Fantasy Premier League points and uses those predictions t
 
 ## 3) Team Strength Model (Poisson Regression)
 
-We model football matches as a stochastic process where the number of goals scored by a team follows a Poisson distribution.
+I model football matches as a stochastic process where the number of goals scored by a team follows a Poisson distribution.
 
 ### The Math
 
@@ -73,25 +80,25 @@ Where:
 
 ### Training (Maximum Likelihood Estimation)
 
-We use `scipy.optimize.minimize` to find the optimal values for $\alpha$ and $\beta$ for every team by minimizing the negative log-likelihood of the observed scores:
+I use `scipy.optimize.minimize` to find the optimal values for $\alpha$ and $\beta$ for every team by minimizing the negative log-likelihood of the observed scores:
 
 $$\mathcal{L}(\theta) = -\sum_{k=1}^{N} \left( y_k \ln(\lambda_k) - \lambda_k \right)$$
 
-By minimizing this loss function, the model learns each team’s attacking and defensive strength, adjusted for opponent difficulty.
+By minimizing this loss function, I learn each team’s attacking and defensive strength, adjusted for opponent difficulty.
 
 ## 4) Player Performance Model (Risk-Adjusted Expected Value)
 
-Once we have team expected goals ($\lambda$), we project individual player points using a risk-adjusted expected value (EV) calculation.
+Once I have team expected goals ($\lambda$), I project individual player points using a risk-adjusted expected value (EV) calculation.
 
 ### A) Base rates (recent form)
 
-We calculate a player's underlying performance metrics per 90 minutes using a weighted historical window (e.g., last 5 active matches):
+I calculate a player's underlying performance metrics per 90 minutes using a weighted historical window (e.g., last 5 active matches):
 - $G_{90}$: goals per 90
 - $A_{90}$: assists per 90
 
 ### B) Fixture scaling
 
-We project a player’s output for a specific fixture by scaling their base rates using the team model’s expected goals:
+I project a player’s output for a specific fixture by scaling their base rates using the team model’s expected goals:
 
 $$xG_{\text{player}} = \lambda_{\text{team}} \times \left( \frac{G_{90}}{1.3} \right) \times \text{PlayTimeFactor}$$
 
@@ -99,7 +106,7 @@ Note: `1.3` is a calibration factor converting team xG to the approximate sum of
 
 ### C) Availability & risk (role minutes vs probability)
 
-To avoid the “clean sheet trap” (where lowering minutes removes clean sheet upside), minutes are modeled in two parts:
+To avoid the “clean sheet trap” (where lowering minutes removes clean sheet upside), I model minutes in two parts:
 
 - Role minutes ($M_{role}$): expected minutes when the player features (e.g., 90, 80)
 - Probability ($P_{\text{play}}$): chance the player appears (from FPL “chance of playing”)
@@ -108,11 +115,11 @@ The calculation:
 
 $$EV = P_{\text{play}} \times \left[ (xG \times 4) + (xA \times 3) + (\text{CS}_{\text{points}} \text{ if } M_{role} \ge 60) \right]$$
 
-Why this matters: if a defender has a 50% chance of playing, we calculate points for a full appearance (including clean sheet) and then multiply by 0.5, instead of giving them 45 minutes and removing clean sheet points entirely.
+Why this matters: if a defender has a 50% chance of playing, I calculate points for a full appearance (including clean sheet) and then multiply by 0.5, instead of giving them 45 minutes and removing clean sheet points entirely.
 
 ## 5) Squad Optimization (Linear Programming)
 
-We treat squad selection as a knapsack-style optimization solved with `pulp`.
+I treat squad selection as a knapsack-style optimization solved with `pulp`.
 
 ### Objective function
 
@@ -120,7 +127,7 @@ Maximize total expected points ($XP$) over a short horizon (commonly 3 gameweeks
 
 $$\text{Maximize } Z = \sum_{i=1}^{N} XP_i \cdot x_i$$
 
-Where $x_i$ is a binary decision variable (1 if player is selected, 0 otherwise).
+Where $x_i$ is a binary decision variable (1 if a player is selected, 0 otherwise).
 
 ### Constraints
 
@@ -145,7 +152,7 @@ $$\sum FWD = 3$$
 
 ## 6) Starting XI and Captaincy (Team sheet logic)
 
-After selecting the 15:
+After selecting the 15, I:
 - Enforce a fixed formation (currently 1-4-4-2)
 - Pick the top projected scorers for the next gameweek to fill:
   - 1 GK, 4 DEF, 4 MID, 2 FWD
