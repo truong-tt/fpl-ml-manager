@@ -8,13 +8,6 @@ This project uses Machine Learning to manage an FPL team by predicting player po
 - View Optimized Squad: see [data/optimal_squad_live.csv](../data/optimal_squad_live.csv) (if present) for player, team, position, and 3-gameweek expected points (XP).
 - View Starting XI for the next gameweek: open the repository’s Actions tab, select the latest “FPL Weekly Update” run, and check the build summary for the Starting XI, Captain, and Vice-Captain.
 
-## Data Pipeline & Resilience
-
-- **Flat directory:** All CSV outputs are saved directly in [data](../data) (no `data/raw` vs `data/processed`) to avoid path resolution issues.
-- **Type conversion:** API numeric strings are parsed to floats (xG, xA, xGI) via a cleaning step before persistence.
-- **Request filtering:** Detailed player history is fetched only for players with minutes > 0 or price > 4.0 to reduce API load.
-- **Retries & caching:** API calls use a short retry loop to handle timeouts; local CSV presence skips re-fetch in the main pipeline.
-
 ## What the Model Predicts
 
 - **Label:** `total_points` (player points for a specific gameweek)
