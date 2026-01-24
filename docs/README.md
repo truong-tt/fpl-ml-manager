@@ -1,159 +1,118 @@
 # FPL ML Manager — Overview (25/26)
 
+This project uses Machine Learning to manage an FPL team by predicting player points and optimizing the squad and starting XI. If you’re unfamiliar with FPL, see [docs/FPL_101.md](docs/FPL_101.md).
+
 ## How to Check the Lineup
 
-The AI updates the squad every Wednesday via GitHub Actions.
+- AI updates the squad weekly via GitHub Actions (Wednesdays).
+- View Optimized Squad: open [data/processed/optimal_squad_live.csv](data/processed/optimal_squad_live.csv) for player, team, position, and 3-gameweek expected points (XP).
+- View Starting XI for next gameweek: go to the repository’s Actions tab, select the latest “FPL Weekly Update” run, and check the build summary for the 1-4-4-2 Starting XI, Captain, and Vice-Captain.
 
-- **View Squad:** Open `data/processed/optimal_squad_live.csv`. This table contains player names, teams, positions, and expected points (XP).
-- **View Starting XI:** Click the **Actions** tab, select the latest **FPL Weekly Update** run, you will see the lineup in **build summary**.
+## What the Model Predicts
 
-This project predicts Fantasy Premier League points and uses those predictions to help pick an optimal squad and starting XI.
+- **Label:** `total_points` (player points for a specific gameweek)
+- **Feature Focus:**
+	- **Explosiveness:** xG (Expected Goals), xA (Expected Assists)
+	- **Usage:** Share of team possessions and defensive actions
+	- **Stability:** Probability of playing 60+ minutes, clean sheet likelihood
+	- **Work Rate:** CBIT thresholds (Clearances, Blocks, Interceptions, Tackles)
 
-## 1) FPL Scoring (Quick Reference 25/26)
+## Team Strength Modeling (Poisson Regression)
 
-### Minutes Played
-- < 60 minutes: +1
-- ≥ 60 minutes: +2 (required for clean sheet points)
-
-### Goals (by position)
-- Forward: +4 per goal
-- Midfielder: +5 per goal
-- Defender: +6 per goal
-- Goalkeeper: +10 per goal
-
-### Assists and Penalties
-- Assist (all positions): +3
-- Penalty miss: -2
-- Goalkeeper penalty save: +5
-
-### Defensive
-- Clean sheet (must play ≥ 60 minutes):
-  - GK/DEF: +4
-  - MID: +1
-- Goals conceded (GK/DEF): -1 per 2 goals conceded
-- Own goal (all): -2
-
-### Goalkeeper Saves
-- +1 for every 3 saves
-
-### Defensive Contributions (CBIT rule)
-- Defenders: +2 for 10+ combined clearances/blocks/interceptions/tackles (CBIT)
-- Midfielders/Forwards: +2 for 12+ CBIT + recoveries
-
-### Bonus Points (BPS)
-- 1st: +3
-- 2nd: +2
-- 3rd: +1
-
-### Cards
-- Yellow: -1
-- Red: -3
-
-## 2) ML Model (What it predicts)
-
-### Label
-- `total_points` (player points for a gameweek)
-
-### Feature focus
-- Explosiveness: xG, xA
-- Stability: probability of playing 60+ minutes, clean sheet likelihood
-- Work rate: CBIT thresholds
-- Bonus potential: smaller contributions that increase BPS
-
-## 3) Team Strength Model (Poisson Regression)
-
-I model football matches as a stochastic process where the number of goals scored by a team follows a Poisson distribution.
+Matches are modeled as a stochastic process where goals follow a Poisson distribution.
 
 ### The Math
 
-For a fixture between Home Team ($i$) and Away Team ($j$), the expected goals ($\lambda$) are:
+For a fixture between Home Team ($i$) and Away Team ($j$), expected goals ($\lambda$):
 
-$$\lambda_{i} = \exp(\alpha_i + \beta_j + \gamma + \delta)$$
+$$
+\lambda_{i} = \exp(\alpha_i + \beta_j + \gamma + \delta)
+$$
+$$
+\lambda_{j} = \exp(\alpha_j + \beta_i + \delta)
+$$
 
-$$\lambda_{j} = \exp(\alpha_j + \beta_i + \delta)$$
-
-Where:
-- $\alpha$ (Alpha): attack strength of the team
-- $\beta$ (Beta): defense weakness of the opponent
-- $\gamma$ (Gamma): home advantage constant
-- $\delta$ (Delta): league-wide intercept (average goal rate)
+**Parameters**
+- $\alpha$ (Alpha): Attack strength of the team
+- $\beta$ (Beta): Defense weakness of the opponent
+- $\gamma$ (Gamma): Home advantage constant
+- $\delta$ (Delta): League-wide intercept (average goal rate); without this, the model might think 2-1 is equal to 4-2.
 
 ### Training (Maximum Likelihood Estimation)
 
-I use `scipy.optimize.minimize` to find the optimal values for $\alpha$ and $\beta$ for every team by minimizing the negative log-likelihood of the observed scores:
+Optimize $\alpha$ and $\beta$ per team using `scipy.optimize.minimize`, minimizing the negative log-likelihood of observed scores:
 
-$$\mathcal{L}(\theta) = -\sum_{k=1}^{N} \left( y_k \ln(\lambda_k) - \lambda_k \right)$$
+$$
+\mathcal{L}(\theta) = -\sum_{k=1}^{N} \left( y_k \ln(\lambda_k) - \lambda_k \right)
+$$
 
-By minimizing this loss function, I learn each team’s attacking and defensive strength, adjusted for opponent difficulty.
+This learns each team’s attacking and defensive strength, adjusted for opponent difficulty.
 
-## 4) Player Performance Model (Risk-Adjusted Expected Value)
+## Player Performance Modeling (Usage Rate & Risk)
 
-Once I have team expected goals ($\lambda$), I project individual player points using a risk-adjusted expected value (EV) calculation.
+Adapts the NBA “Usage Rate” (the percentage of team plays used by a player while on the floor) concept to football’s "team ecosystem".
 
-### A) Base rates (recent form)
+- **Finite Pie Theory:** A team has finite output (Goals, xG, Defensive Actions).
+- **Usage Calculation:** A player’s historical share of team output determines their slice (e.g., “40% of Man City’s attack flows through Haaland”).
+- **Vacuum Effect:** If a high-usage player misses a game, their share is redistributed to teammates rather than disappearing.
 
-I calculate a player's underlying performance metrics per 90 minutes using a weighted historical window (e.g., last 5 active matches):
-- $G_{90}$: goals per 90
-- $A_{90}$: assists per 90
+### A) Attacking Usage
 
-### B) Fixture scaling
+Weighted mix of Threat (Shots/Touches) and Creativity (Passes) defines a player’s attacking slice.
 
-I project a player’s output for a specific fixture by scaling their base rates using the team model’s expected goals:
+$$
+	ext{GoalShare}_{\text{player}} = \frac{\text{Threat}_{\text{player}}}{\text{Threat}_{\text{TeamXI}}}
+$$
 
-$$xG_{\text{player}} = \lambda_{\text{team}} \times \left( \frac{G_{90}}{1.3} \right) \times \text{PlayTimeFactor}$$
+Prediction:
 
-Note: `1.3` is a calibration factor converting team xG to the approximate sum of individual xG.
+$$
+XP_{\text{attack}} = \lambda_{\text{team}} \times \text{GoalShare} \times \text{PlayTimeFactor}
+$$
 
-### C) Availability & risk (role minutes vs probability)
+### B) Defensive Usage (CBIT)
 
-To avoid the “clean sheet trap” (where lowering minutes removes clean sheet upside), I model minutes in two parts:
+Models FPL defensive work points via share of defensive workload.
 
-- Role minutes ($M_{role}$): expected minutes when the player features (e.g., 90, 80)
-- Probability ($P_{\text{play}}$): chance the player appears (from FPL “chance of playing”)
+- **Opponent Pressure:** Scale expected defensive actions based on opponent strength (higher xG → more potential defensive bonus points).
+- **Threshold Probability:** Sigmoid function for probability of hitting the 10+ actions threshold (+2 points).
 
-The calculation:
+### C) Availability & Risk
 
-$$EV = P_{\text{play}} \times \left[ (xG \times 4) + (xA \times 3) + (\text{CS}_{\text{points}} \text{ if } M_{role} \ge 60) \right]$$
+Avoids the “clean sheet trap” by modeling minutes in two parts:
 
-Why this matters: if a defender has a 50% chance of playing, I calculate points for a full appearance (including clean sheet) and then multiply by 0.5, instead of giving them 45 minutes and removing clean sheet points entirely.
+- **Role Minutes ($M_{role}$):** Expected minutes when the player features.
+- **Probability ($P_{\text{play}}$):** Chance the player appears.
 
-## 5) Squad Optimization (Linear Programming)
+Overall expected value:
 
-I treat squad selection as a knapsack-style optimization solved with `pulp`.
+$$
+EV = P_{\text{play}} \times \left[ XP_{\text{attack}} + XP_{\text{CBIT}} + (\text{CS}_{\text{points}} \text{ if } M_{role} \ge 60) \right]
+$$
 
-### Objective function
+## Squad Optimization (Linear Programming)
 
-Maximize total expected points ($XP$) over a short horizon (commonly 3 gameweeks):
+Treat squad selection as a constrained knapsack problem using `pulp`.
 
-$$\text{Maximize } Z = \sum_{i=1}^{N} XP_i \cdot x_i$$
+### Objective
 
-Where $x_i$ is a binary decision variable (1 if a player is selected, 0 otherwise).
+Maximize total expected points (XP) over 3 gameweeks:
+
+$$
+	ext{Maximize } Z = \sum_{i=1}^{N} XP_i \cdot x_i
+$$
+
+Where $x_i$ is binary (1 if selected, 0 otherwise).
 
 ### Constraints
 
-Budget:
+- **Budget:** $\sum \text{Cost}_i \cdot x_i \le 100.0$
+- **Squad Size:** $\sum x_i = 15$
+- **Club Limit:** For any team $T$, $\sum_{i \in \text{team}=T} x_i \le 3$
+- **Structure:** 2 GK, 5 DEF, 5 MID, 3 FWD
 
-$$\sum_{i=1}^{N} \text{Cost}_i \cdot x_i \le 100.0$$
+## Starting XI and Captaincy
 
-Squad size:
-
-$$\sum_{i=1}^{N} x_i = 15$$
-
-Max 3 players per club:
-
-$$\sum_{i \in \text{team}=T} x_i \le 3$$
-
-Position structure:
-
-$$\sum GK = 2$$
-$$\sum DEF = 5$$
-$$\sum MID = 5$$
-$$\sum FWD = 3$$
-
-## 6) Starting XI and Captaincy (Team sheet logic)
-
-After selecting the 15, I:
-- Enforce a fixed formation (currently 1-4-4-2)
-- Pick the top projected scorers for the next gameweek to fill:
-  - 1 GK, 4 DEF, 4 MID, 2 FWD
-- Captain: highest projected points in the starting XI
+- Enforce a 1-4-4-2 formation for the immediate gameweek.
+- Select highest projected scorers to fill Starting XI slots.
+- **Captain:** Player with the highest projected points (XP).
