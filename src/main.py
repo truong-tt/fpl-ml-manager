@@ -1,64 +1,61 @@
 import os
 import pandas as pd
+from data_loader import main as update_data
 from fpl_engine import FPLEngine
 
-# File paths
-BASE = "data/processed"
-FIXTURES = os.path.join(BASE, "fpl_fixtures.csv")
-HISTORY = os.path.join(BASE, "fpl_gameweek_history.csv")
-PLAYERS = os.path.join(BASE, "fpl_players_summary.csv")
-OUTPUT = os.path.join(BASE, "optimal_squad_live.csv")
+DATA_DIR = "data"
+FIXTURES_PATH = os.path.join(DATA_DIR, "fixtures.csv")
+HISTORY_PATH = os.path.join(DATA_DIR, "history.csv")
+PLAYERS_PATH = os.path.join(DATA_DIR, "players.csv")
 
-
-def print_team(starters, bench, cap_id, vc_id):
-    """Display formatted team sheet."""
-    line = "─" * 80
-    header = f"{'POS':<6} {'PLAYER':<24} {'TEAM':<14} {'PRICE':<8} {'XP':<8}"
-
-    print(f"\n{line}\n{' ' * 25}FPL Squad Selection using ML Predictions\n{line}")
-    print(f"\nSTARTING XI\n{line}\n{header} {'ROLE':<8}\n{line}")
-
-    for _, p in starters.iterrows():
-        role = "CAPTAIN" if p['id'] == cap_id else "VICE-CAP" if p['id'] == vc_id else ""
-        print(f"{p['position']:<6} {p['name']:<24} {p['team']:<14} £{p['price']:<7} {p['next_gw_xp']:<7.1f} {role}")
-
-    print(f"\nSUBSTITUTES\n{line}\n{header}\n{line}")
-    for _, p in bench.iterrows():
-        print(f"{p['position']:<6} {p['name']:<24} {p['team']:<14} £{p['price']:<7} {p['next_gw_xp']:<7.1f}")
-    print(line)
-
+def get_current_gw(fixtures_df):
+    """Get next upcoming Gameweek."""
+    upcoming = fixtures_df[fixtures_df['finished'] == False]
+    return 38 if upcoming.empty else upcoming.iloc[0]['event']
 
 def main():
-    if not os.path.exists(FIXTURES):
-        return print("Error: Data files not found.")
+    print("\n=== AI FPL MANAGER ===")
 
-    # Find next gameweek
-    fixtures = pd.read_csv(FIXTURES)
-    next_gw = fixtures[~fixtures['finished']]['event'].min()
-    if pd.isna(next_gw):
+    if os.path.exists(PLAYERS_PATH) and os.path.exists(HISTORY_PATH) and os.path.exists(FIXTURES_PATH):
+        print("Data found")
+    else:
+        print("Downloading data...")
+        try:
+            update_data()
+        except Exception as e:
+            print(f"Failed: {e}")
+            return
+
+    try:
+        fixtures = pd.read_csv(FIXTURES_PATH)
+        history = pd.read_csv(HISTORY_PATH)
+        players = pd.read_csv(PLAYERS_PATH)
+    except Exception as e:
+        print(f"Load error: {e}")
         return
 
-    # Run prediction pipeline
-    engine = FPLEngine(FIXTURES, HISTORY, PLAYERS)
-    preds = engine.train_and_predict(next_gw, horizon=3)
-    if preds.empty:
+    engine = FPLEngine(fixtures, history, players)
+    current_gw = get_current_gw(fixtures)
+    print(f"Training for GW {current_gw}...")
+    projections = engine.train_and_predict(current_gw, horizon=3)
+    
+    if projections.empty:
+        print("No projections")
         return
 
-    squad = engine.optimize_squad(preds)
-    if squad.empty:
+    print("Optimizing squad...")
+    best_squad = engine.optimize_squad(projections, budget=100.0)
+    
+    if best_squad.empty:
+        print("Optimization failed")
         return
 
-    # Format and display
-    team_result = engine.pick_team_sheet(squad)
-    if team_result is None:
-        return
-    starters, bench, cap_id, vc_id = team_result
-    starters_fmt = engine.format_squad(starters).assign(id=starters['id'].values)
-    bench_fmt = engine.format_squad(bench).assign(id=bench['id'].values)
+    starting_xi, bench, cap, vice = engine.pick_team_sheet(best_squad)
+    engine.display_squad(starting_xi, bench, cap, vice)
 
-    print_team(starters_fmt, bench_fmt, cap_id, vc_id)
-    engine.format_squad(squad).to_csv(OUTPUT, index=False)
-
+    print("\n=== TRANSFERS ===")
+    transfer_rec = engine.recommend_transfers(best_squad, bank=0.5, free_transfers=1)
+    engine.print_transfer_recommendation(transfer_rec)
 
 if __name__ == "__main__":
     main()
