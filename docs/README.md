@@ -37,7 +37,7 @@ $$\lambda_{j} = \exp(\alpha_j + \beta_i + \delta)$$
 Where $\alpha$ is attack strength, $\beta$ is defense weakness, $\gamma$ is home-field advantage, and $\delta$ is the baseline scoring rate.
 
 **References:**
-- [Modeling Association Football Scores and Inefficiencies in the Football Betting Market — Dixon & Coles, 1997](https://rss.onlinelibrary.wiley.com/doi/abs/10.1111/1467-9884.00065)
+- [Modeling Association Football Scores and Inefficiencies in the Football Betting Market — Dixon & Coles, 1997](https://www.ajbuckeconbikesail.net/wkpapers/Airports/MVPoisson/soccer_betting.pdf)
 - [Automatic Differentiation Variational Inference — Kucukelbir et al., 2016](https://arxiv.org/abs/1603.00788)
 
 ---
