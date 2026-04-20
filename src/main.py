@@ -45,7 +45,7 @@ def main() -> None:
     Primary Orchestrator.
     Handles data ingestion, initiates XGBoost model training, runs Bayesian
     predictions, and executes the MILP knapsack solver to generate the optimal team.
-    Writes outputs silently to text files.
+    Prints ONLY the final squad and transfer output for GitHub Actions capture.
     """
     try:
         update_data()
@@ -96,12 +96,11 @@ def main() -> None:
                                        proj=projections, risk=RISK_AVERSION_COEF)
         )
 
+
+        final_output = f"AI FPL Manager - Weekly Summary\n{'=' * 30}\n{squad_str}\n{transfer_str}"
         with open(txt_path, 'w') as f:
-            f.write("AI FPL Manager - Weekly Summary\n")
-            f.write("=" * 30 + "\n")
-            f.write(squad_str)
-            f.write("\n")
-            f.write(transfer_str)
+            f.write(final_output)
+        print(final_output)
 
 
 if __name__ == "__main__":
