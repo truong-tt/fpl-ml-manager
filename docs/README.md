@@ -16,7 +16,7 @@ This project implements an autonomous ML agent designed to solve the FPL managem
 1. Models match outcomes via **Bayesian inference**.
 2. Normalizes player underlying metrics (Opponent-Adjusted xG/xA).
 3. Predicts playing time probabilities using **Tree-Based Machine Learning**.
-4. Solves a multi-period constrained knapsack problem using **Mixed-Integer Linear Programming (MILP)** to dictate optimal portfolio selection and weekly transfers.
+4. Solves a multi-period constrained knapsack problem using **Mixed-Integer Linear Programming (MILP)** with **Receding Horizon Control (RHC)** to dictate optimal portfolio selection and weekly transfers.
 
 ---
 
@@ -26,14 +26,15 @@ This project implements an autonomous ML agent designed to solve the FPL managem
 
 Matches are modeled as a stochastic process where goals scored follow a Poisson distribution, accounting for bivariate dependence (e.g., 0-0 draws) via a Dixon-Coles adjustment.
 
-Instead of computationally heavy Markov Chain Monte Carlo (MCMC) sampling, this engine utilizes **Automatic Differentiation Variational Inference (ADVI)** via `PyMC` to approximate the posterior distributions of latent team strengths in a fraction of the time, making it viable for standard hardware.
+Instead of computationally heavy Markov Chain Monte Carlo (MCMC) sampling, this engine utilizes **Automatic Differentiation Variational Inference (ADVI)** via `PyMC` to approximate the posterior distributions of latent team strengths in a fraction of the time, making it viable for standard hardware without requiring heavy GPU acceleration.
 
 For a fixture between Home ($i$) and Away ($j$), the expected goals ($\lambda$) are defined as:
 
 $$\lambda_{i} = \exp(\alpha_i + \beta_j + \gamma + \delta)$$
+
 $$\lambda_{j} = \exp(\alpha_j + \beta_i + \delta)$$
 
-*Where $\alpha$ is attack strength, $\beta$ is defense weakness, $\gamma$ is home-field advantage, and $\delta$ is the baseline scoring rate.*
+Where $\alpha$ is attack strength, $\beta$ is defense weakness, $\gamma$ is home-field advantage, and $\delta$ is the baseline scoring rate.
 
 **References:**
 - [Modeling Association Football Scores and Inefficiencies in the Football Betting Market — Dixon & Coles, 1997](https://rss.onlinelibrary.wiley.com/doi/abs/10.1111/1467-9884.00065)
@@ -49,7 +50,7 @@ A common pitfall in sports analytics is over-indexing on players who artificiall
 
 ### 2.3 XGBoost: 3-State Expected Value (EV) Formulation
 
-Playing time is rarely binary. Due to soccer substitution rules, 10-minute cameos heavily penalize FPL scoring. We model playing time as a discrete probability distribution over three states: **Start** (≥ 60 min), **Sub** (< 60 min), and **Bench** (0 min).
+Playing time is rarely binary. Due to soccer substitution rules, 10-minute cameos heavily penalize FPL scoring. We model playing time as a discrete probability distribution over three states: Start ($\geq 60$ min), Sub ($< 60$ min), and Bench ($0$ min).
 
 The probability of each state is predicted using an **XGBoost Classifier** trained on time-series lagged features (e.g., 3-week rolling average minutes, previous match binary state). The total Expected Value (EV) is the weighted sum of these conditional states:
 
@@ -60,24 +61,26 @@ $$E[\text{Points}] = P(\text{Start}) \cdot E[\text{Pts} \mid \text{Start}] + P(\
 
 ---
 
-## 3. Combinatorial Optimization (MILP)
+## 3. Combinatorial Optimization (MILP) and Receding Horizon Control
 
 Squad selection is framed as a variation of the bounded knapsack problem. We use the `pulp` library (CBC solver) to maximize the Expected Points (XP) over a 5-step time horizon, factoring in risk (variance) inspired by Modern Portfolio Theory (MPT).
 
+Because FPL enforces strict transaction costs (free transfers can be banked, excess transfers cost -4 points), the optimizer uses **Receding Horizon Control (RHC)**. Rather than a static 1D block optimization, the decision variable is expanded to a 2D matrix ($x_{i,t}$), allowing the time-dimension to dictate exact transfer execution timing over a rolling window.
+
 ### Objective Function
 
-Maximize the risk-adjusted returns of the selected portfolio, while accounting for a captaincy multiplier ($c_i$) and a covariance/stacking bonus ($\omega \cdot y_T$):
+Maximize the risk-adjusted returns of the selected portfolio across the horizon $T$, while accounting for transfer point penalties ($h_t$):
 
-$$\max_{x, c, y} \sum_{i=1}^{N} \left( \mu_i - \nu \sigma_i \right)(x_i + c_i) + \sum_{T \in \mathcal{T}} \omega \cdot y_T$$
+$$\max_{x,\, c,\, h} \sum_{t=1}^{T} \sum_{i=1}^{N} \left( \mu_{i,t} - \nu \sigma_i \right)(x_{i,t} + c_{i,t}) - \sum_{t=1}^{T} 4 h_t$$
 
 ### Constraints
 
 | # | Constraint | Description |
 |---|------------|-------------|
-| 1 | **Budget** | $\sum (x_i \cdot \text{Cost}_i) \le \text{Total Bank}$ |
+| 1 | **Dynamic Budget** | $\sum_{i} x_{i,t} \cdot \text{Cost}_{i,t} \leq \text{Bank}_t$ for every gameweek $t$ |
 | 2 | **Cardinality** | Exact positional counts: 2 GK, 5 DEF, 5 MID, 3 FWD (15 total) |
 | 3 | **Entity Limits** | Max 3 players per Premier League club |
-| 4 | **Transaction Costs** | Marginal gain ($\Delta \mu$) must strictly exceed the point penalty for executing a transfer |
+| 4 | **Conservation of Transfers** | Linking constraints track accumulated Free Transfers (capped at 5) and trigger the $-4$ point penalty only when $h_t > 0$ |
 
 ---
 
@@ -115,5 +118,5 @@ python src/main.py
 
 ## 5. Future Work
 
-- **Receding Horizon Control (RHC):** Transitioning the multi-period transfer heuristic from static block optimization to true RHC, allowing the time-dimension variable ($x_{i,t}$) to dictate exact transfer execution timing over a rolling window.
-- **Deep Learning Integration:** Exploring Recurrent Neural Networks (LSTMs) for time-series forecasting to replace the current Exponentially Weighted Moving Average (EWMA) usage allocations.
+- **Deep Learning Integration:** Exploring Recurrent Neural Networks (LSTMs) for time-series forecasting to replace the Exponentially Weighted Moving Average (EWMA) usage allocations.
+- **Live Price-Change Inference:** Integrating market movement predictors to execute MILP transactions prior to player cost fluctuations, maximizing team value over a 38-week season.
