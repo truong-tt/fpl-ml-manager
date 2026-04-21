@@ -238,7 +238,7 @@ class FPLEngine:
         Returns:
             Dataframe of player point projections.
         """
-        from src.features import build_match_features
+        from features import build_match_features
         import xgboost as xgb
 
         upcoming = self.fixtures[(self.fixtures['event'] >= current_gw) & (self.fixtures['event'] < current_gw + horizon)]
