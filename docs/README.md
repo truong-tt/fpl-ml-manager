@@ -1,7 +1,6 @@
 # Autonomous Fantasy Premier League (FPL) ML Manager
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue.svg)
-![PyMC](https://img.shields.io/badge/PyMC-Bayesian_Inference-orange.svg)
 ![XGBoost](https://img.shields.io/badge/XGBoost-Tree_Boosting-green.svg)
 ![PuLP](https://img.shields.io/badge/PuLP-MILP_Optimization-yellow.svg)
 
@@ -9,11 +8,11 @@
 
 I built this project to bridge my passion for Premier League football with my interest in Machine Learning and Operations Research. Fantasy Premier League (FPL) is a highly stochastic environment constrained by strict rules (budget, positional limits, team caps) and high-variance outcomes. This makes it a perfect sandbox for combinatorial optimization and predictive modeling.
 
-> **Note:** If you are unfamiliar with the domain-specific rules, scoring systems, and constraints of the game, please read the [FPL 101](FPL_101.md) before exploring the system architecture.
+> **Note:** If you are unfamiliar with the domain-specific rules, scoring systems, and constraints of the game, please read the [FPL 101 Primer](FPL_101.md) before exploring the system architecture.
 
 This project implements an autonomous ML agent designed to solve the FPL management problem. The system operates as a data-driven pipeline that:
 
-1. Models match outcomes via **Bayesian inference**.
+1. Models match outcomes via **XGBoost Poisson Regression**.
 2. Normalizes player underlying metrics (Opponent-Adjusted xG/xA).
 3. Predicts playing time probabilities using **Tree-Based Machine Learning**.
 4. Solves a multi-period constrained knapsack problem using **Mixed-Integer Linear Programming (MILP)** with **Receding Horizon Control (RHC)** to dictate optimal portfolio selection and weekly transfers.
@@ -22,33 +21,51 @@ This project implements an autonomous ML agent designed to solve the FPL managem
 
 ## 2. Mathematical Modeling and Machine Learning
 
-### 2.1 Bayesian Poisson Regression via ADVI (Match Simulation)
+### 2.1 XGBoost Poisson Regression (Match Simulation)
 
-Matches are modeled as a stochastic process where goals scored follow a Poisson distribution, accounting for bivariate dependence (e.g., 0-0 draws) via a Dixon-Coles adjustment.
+The previous Bayesian Hierarchical Poisson model (PyMC/ADVI) has been replaced with a **Gradient Boosting Poisson Regression** approach. The core reason for this change is data scope: the FPL API only exposes single-season data, which means the sparse dataset does not provide enough signal for a hierarchical Bayesian model to reliably estimate latent team-strength posteriors. On such datasets, XGBoost's ability to capture non-linear tactical interactions — such as a high-press attack meeting a deep defensive block — generalizes better than the previous EWMA-smoothed Poisson regression.
 
-Instead of computationally heavy Markov Chain Monte Carlo (MCMC) sampling, this engine utilizes **Automatic Differentiation Variational Inference (ADVI)** via `PyMC` to approximate the posterior distributions of latent team strengths in a fraction of the time, making it viable for standard hardware without requiring heavy GPU acceleration.
+Two independent XGBoost models are trained using a `count:poisson` objective, one for each side of the fixture. Each model outputs the expected goal rate ($\lambda$) directly:
 
-For a fixture between Home ($i$) and Away ($j$), the expected goals ($\lambda$) are defined as:
+$$\lambda_{\text{home}} = f_{\text{home}}(\mathbf{x}_{\text{home}}, \mathbf{x}_{\text{away}})$$
 
-$$\lambda_{i} = \exp(\alpha_i + \beta_j + \gamma + \delta)$$
+$$\lambda_{\text{away}} = f_{\text{away}}(\mathbf{x}_{\text{away}}, \mathbf{x}_{\text{home}})$$
 
-$$\lambda_{j} = \exp(\alpha_j + \beta_i + \delta)$$
+Where $\mathbf{x}$ is the engineered feature vector for each team (see Section 2.2). The trained models are exported as `xgb_home_goals.json` and `xgb_away_goals.json` via `src/train_match_model.py`.
 
-Where $\alpha$ is attack strength, $\beta$ is defense weakness, $\gamma$ is home-field advantage, and $\delta$ is the baseline scoring rate.
-
-**References:**
-- [Modeling Association Football Scores and Inefficiencies in the Football Betting Market — Dixon & Coles, 1997](https://www.ajbuckeconbikesail.net/wkpapers/Airports/MVPoisson/soccer_betting.pdf)
-- [Automatic Differentiation Variational Inference — Kucukelbir et al., 2016](https://arxiv.org/abs/1603.00788)
+**Reference:**
+- [XGBoost: A Scalable Tree Boosting System — Chen & Guestrin, 2016](https://arxiv.org/abs/1603.02754)
 
 ---
 
-### 2.2 The "Form Trap": Opponent-Adjusted Expected Metrics
+### 2.2 Feature Engineering (`src/features.py`)
 
-A common pitfall in sports analytics is over-indexing on players who artificially inflate their underlying numbers against weak opposition. To combat this, the pipeline extracts the Bayesian defensive posterior ($\beta$) of the historical opponent faced, and mathematically divides the player's historical xG/xA by that parameter before feeding it to the time-series decay function. This penalizes stat-padding against weak defenses and rewards production against elite defenses.
+A dedicated feature engineering module generates rolling time-series metrics as inputs to the XGBoost match models. The feature set per fixture includes the rolling 5-game xG and rolling 5-game xGA for both the home and away team, as well as a strength differential term capturing the relative attacking and defensive quality between the two sides. These rolling windows smooth out single-match variance while remaining responsive to recent tactical form.
 
 ---
 
-### 2.3 XGBoost: 3-State Expected Value (EV) Formulation
+### 2.3 FPL Scoring Model
+
+The point valuation layer has been corrected and extended to more accurately reflect the official FPL scoring rules.
+
+**Goalkeeper Goals** — corrected from 6 points to the accurate value of **10 points**.
+
+**Defensive Action Bonuses** — Poisson simulations are now run over historical defensive action rates to compute the probability of a player triggering the bonus threshold in a given match. The bonus is position-dependent:
+
+- Defenders receive **+2 points** for achieving $\geq 10$ combined Clearances, Blocks, Interceptions, and Tackles (CBIT).
+- Midfielders and Forwards receive **+2 points** for achieving $\geq 12$ combined Clearances, Blocks, Interceptions, Tackles, and Recoveries (CBIRT).
+
+**Negative Point Deductions** — expected deductions are now factored into each player's EV calculation using historical per-90 rates for yellow cards ($-1$), red cards ($-3$), missed penalties ($-2$), and own goals ($-2$).
+
+---
+
+### 2.4 The "Form Trap": Opponent-Adjusted Expected Metrics
+
+A common pitfall in sports analytics is over-indexing on players who artificially inflate their underlying numbers against weak opposition. To combat this, the pipeline extracts the rolling xGA of the historical opponent faced and uses it as a defensive quality scalar to adjust the player's historical xG/xA before feeding it to the time-series decay function. This penalizes stat-padding against weak defenses and rewards production against elite defenses.
+
+---
+
+### 2.5 XGBoost: 3-State Expected Value (EV) Formulation
 
 Playing time is rarely binary. Due to soccer substitution rules, 10-minute cameos heavily penalize FPL scoring. We model playing time as a discrete probability distribution over three states: Start ($\geq 60$ min), Sub ($< 60$ min), and Bench ($0$ min).
 
@@ -112,7 +129,7 @@ pip install -r requirements.txt
 python src/main.py
 ```
 
-> **Note:** On the first run, the system will automatically pull API data, engineer time-series features, and train the XGBoost minutes classifier before running the optimization sequence.
+> **Note:** On the first run, the system will automatically pull API data, extract and sanitize the required columns (`recoveries`, `yellow_cards`, `red_cards`, `penalties_missed`, `own_goals`), engineer time-series features via `src/features.py`, and train both the XGBoost match simulation models and the minutes classifier. If the match model files (`xgb_home_goals.json`, `xgb_away_goals.json`) are not found on disk, `src/main.py` will automatically trigger `src/train_match_model.py` before running the optimization sequence.
 
 ---
 
