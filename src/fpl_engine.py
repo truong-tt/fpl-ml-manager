@@ -12,7 +12,7 @@ import pymc as pm
 
 warnings.filterwarnings("ignore")
 
-POINTS_MAP = {1: {"goal": 6, "assist": 3, "cs": 4}, 2: {"goal": 6, "assist": 3, "cs": 4},
+POINTS_MAP = {1: {"goal": 10, "assist": 3, "cs": 4}, 2: {"goal": 6, "assist": 3, "cs": 4},
               3: {"goal": 5, "assist": 3, "cs": 1}, 4: {"goal": 4, "assist": 3, "cs": 0}}
 SQUAD_COUNTS = {1: 2, 2: 5, 3: 5, 4: 3}
 MIN_STARTERS = {1: 1, 2: 3, 3: 2, 4: 1}
@@ -234,8 +234,7 @@ class FPLEngine:
 
         if team_strengths is not None and 'opponent_team' in w.columns:
             def get_def_multiplier(opp_id):
-                opp_stats = team_strengths.get(opp_id, {'defense': 0.0})
-                return np.exp(opp_stats['defense'])
+                return np.exp(team_strengths.get(opp_id, {'defense': 0.0})['defense'])
 
             w['opp_def_multiplier'] = w['opponent_team'].apply(get_def_multiplier)
             w['adj_xg'] = w['expected_goals'] / w['opp_def_multiplier']
@@ -246,23 +245,28 @@ class FPLEngine:
 
         def calc(t: pd.DataFrame):
             return pd.Series({'xg': (t['adj_xg'] * t['weight']).sum() or 0.1,
-                              'xa': (t['adj_xa'] * t['weight']).sum() or 0.1,
-                              'cbit': ((t['clearances_blocks_interceptions'] + t['tackles']) * t['weight']).sum() or 1})
+                              'xa': (t['adj_xa'] * t['weight']).sum() or 0.1})
 
-        tt = w.groupby('team')[
-            ['adj_xg', 'adj_xa', 'clearances_blocks_interceptions', 'tackles', 'weight']].apply(
-            calc).to_dict('index')
+        tt = w.groupby('team').apply(calc).to_dict('index')
 
         res = {}
         for pid, g in w.groupby('player_id'):
             p_id = int(cast(Any, pid))
             tid = self.id_map.get(p_id, -1)
             if g['minutes'].sum() < 45 or tid not in tt: continue
-            t, wg = tt[tid], g['weight']
+            t, wg, mins = tt[tid], g['weight'], g['minutes'].sum()
+
+            cbit = g['clearances_blocks_interceptions'] + g['tackles']
+            cbirt = cbit + g.get('recoveries', 0)
+            neg = g.get('yellow_cards', 0) + g.get('red_cards', 0) * 3 + g.get('penalties_missed', 0) * 2 + g.get(
+                'own_goals', 0) * 2
+
             res[p_id] = {'share_xg': (g['adj_xg'] * wg).sum() / t['xg'],
                          'share_xa': (g['adj_xa'] * wg).sum() / t['xa'],
-                         'share_cbit': ((g['clearances_blocks_interceptions'] + g['tackles']) * wg).sum() / t['cbit'],
-                         'saves_p90': g['saves'].sum() / g['minutes'].sum() * 90,
+                         'cbit_p90': (cbit * wg).sum() / mins * 90,
+                         'cbirt_p90': (cbirt * wg).sum() / mins * 90,
+                         'neg_p90': (neg * wg).sum() / mins * 90,
+                         'saves_p90': g['saves'].sum() / mins * 90,
                          'risk_variance': std.get(p_id, 2.0), 'team': tid}
         return res
 
@@ -337,15 +341,20 @@ class FPLEngine:
                 sim = match_sims[(p['team'], gw)]
                 pxg, pxa = sim['xg'] * min(stats['share_xg'], 0.70), sim['xg'] * min(stats['share_xa'], 0.50)
 
-                if pos in [1, 2]:
-                    bps = np.mean((sim['sim_goals'] * stats['share_xg']) + (stats['share_cbit'] * 2.0) > 0.6)
-                else:
-                    bps = np.mean(sim['sim_goals'] * stats['share_xg'] > 0.6)
-
+                bps = np.mean(sim['sim_goals'] * stats['share_xg'] > 0.6)
                 mbps = 2.5 * bps if pos in [1, 2] else 1.5 * bps
 
+                def_action_pts = 0
+                if pos == 2:
+                    def_action_pts = np.mean(np.random.poisson(stats.get('cbit_p90', 0), 1000) >= 10) * 2
+                elif pos in [3, 4]:
+                    def_action_pts = np.mean(np.random.poisson(stats.get('cbirt_p90', 0), 1000) >= 12) * 2
+
+                neg_pts = stats.get('neg_p90', 0)
+
                 base_pts = (pxg * pts['goal'] + pxa * pts['assist'] +
-                            (stats['saves_p90'] / 3.0 if pos == 1 else mbps) +
+                            (stats.get('saves_p90', 0) / 3.0 if pos == 1 else mbps) +
+                            def_action_pts - neg_pts +
                             (sim['xga'] / 2.0 * -1 if pos in [1, 2] else 0))
 
                 ev_start = p_start * (base_pts + 2 + (pts['cs'] * sim['cs']))

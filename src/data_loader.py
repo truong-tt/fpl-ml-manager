@@ -56,10 +56,13 @@ def clean_expected_stats(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Cleaned data with numeric underlying stats.
     """
-    cols = ['expected_goals', 'expected_assists', 'expected_goal_involvements', 'expected_goals_conceded']
+    cols = ['expected_goals', 'expected_assists', 'expected_goal_involvements', 'expected_goals_conceded',
+            'recoveries', 'yellow_cards', 'red_cards', 'penalties_missed', 'own_goals']
     for col in cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+        else:
+            df[col] = 0.0
     return df
 
 
