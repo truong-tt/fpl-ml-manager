@@ -164,13 +164,14 @@ class FPLEngine:
                 }
             return res
 
-    def _calculate_usage_stats(self, gw: int, n: int = 10, team_strengths: dict | None = None) -> dict[int, dict[str, Any]]:
+    def _calculate_usage_stats(self, gw: int, n: int = 10, team_strengths: dict | None = None) -> dict[
+        int, dict[str, Any]]:
         """Allocates team-level expected metrics to individual players.
 
         Args:
             gw: Current Gameweek.
             n: Window size.
-            team_strengths: Opponent defensive strengths.
+            team_strengths: Opponent defensive and attacking strengths.
 
         Returns:
             Usage rates mapped by player ID.
@@ -183,12 +184,23 @@ class FPLEngine:
             def get_def_multiplier(opp_id):
                 return np.exp(team_strengths.get(opp_id, {'defense': 0.0})['defense'])
 
+            def get_atk_multiplier(opp_id):
+                return np.exp(team_strengths.get(opp_id, {'attack': 0.0})['attack'])
+
             w['opp_def_multiplier'] = w['opponent_team'].apply(get_def_multiplier)
+            w['opp_atk_multiplier'] = w['opponent_team'].apply(get_atk_multiplier)
+
             w['adj_xg'] = w['expected_goals'] / w['opp_def_multiplier']
             w['adj_xa'] = w['expected_assists'] / w['opp_def_multiplier']
+
+            w['adj_cbit'] = (w['clearances_blocks_interceptions'] + w['tackles']) / w['opp_atk_multiplier']
+            w['adj_cbirt'] = (w['clearances_blocks_interceptions'] + w['tackles'] + w.get('recoveries', 0)) / w[
+                'opp_atk_multiplier']
         else:
             w['adj_xg'] = w['expected_goals']
             w['adj_xa'] = w['expected_assists']
+            w['adj_cbit'] = w['clearances_blocks_interceptions'] + w['tackles']
+            w['adj_cbirt'] = w['adj_cbit'] + w.get('recoveries', 0)
 
         def calc(t: pd.DataFrame):
             return pd.Series({'xg': (t['adj_xg'] * t['weight']).sum() or 0.1,
@@ -203,14 +215,13 @@ class FPLEngine:
             if g['minutes'].sum() < 45 or tid not in tt: continue
             t, wg, mins = tt[tid], g['weight'], g['minutes'].sum()
 
-            cbit = g['clearances_blocks_interceptions'] + g['tackles']
-            cbirt = cbit + g.get('recoveries', 0)
-            neg = g.get('yellow_cards', 0) + g.get('red_cards', 0)*3 + g.get('penalties_missed', 0)*2 + g.get('own_goals', 0)*2
+            neg = g.get('yellow_cards', 0) + g.get('red_cards', 0) * 3 + g.get('penalties_missed', 0) * 2 + g.get(
+                'own_goals', 0) * 2
 
             res[p_id] = {'share_xg': (g['adj_xg'] * wg).sum() / t['xg'],
                          'share_xa': (g['adj_xa'] * wg).sum() / t['xa'],
-                         'cbit_p90': (cbit * wg).sum() / mins * 90,
-                         'cbirt_p90': (cbirt * wg).sum() / mins * 90,
+                         'cbit_p90': (g['adj_cbit'] * wg).sum() / mins * 90,
+                         'cbirt_p90': (g['adj_cbirt'] * wg).sum() / mins * 90,
                          'neg_p90': (neg * wg).sum() / mins * 90,
                          'saves_p90': g['saves'].sum() / mins * 90,
                          'risk_variance': std.get(p_id, 2.0), 'team': tid}

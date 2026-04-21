@@ -3,6 +3,7 @@
 ![Python](https://img.shields.io/badge/Python-3.11-blue.svg)
 ![XGBoost](https://img.shields.io/badge/XGBoost-Tree_Boosting-green.svg)
 ![PuLP](https://img.shields.io/badge/PuLP-MILP_Optimization-yellow.svg)
+![GitHub Actions](https://img.shields.io/github/actions/workflow/status/your-username/fpl-ml-manager/weekly_update.yml?label=Weekly%20Bot&logo=github)
 
 ## 1. Motivation and Abstract
 
@@ -13,7 +14,7 @@ I built this project to bridge my passion for Premier League football with my in
 This project implements an autonomous ML agent designed to solve the FPL management problem. The system operates as a data-driven pipeline that:
 
 1. Models match outcomes via **XGBoost Poisson Regression**.
-2. Normalizes player underlying metrics (Opponent-Adjusted xG/xA).
+2. Normalizes player underlying metrics using a **two-way opponent adjustment** (attacking metrics via opponent xGA; defensive action metrics via opponent xG).
 3. Predicts playing time probabilities using **Tree-Based Machine Learning**.
 4. Solves a multi-period constrained knapsack problem using **Mixed-Integer Linear Programming (MILP)** with **Receding Horizon Control (RHC)** to dictate optimal portfolio selection and weekly transfers.
 
@@ -50,7 +51,7 @@ The point valuation layer has been corrected and extended to more accurately ref
 
 **Goalkeeper Goals** — corrected from 6 points to the accurate value of **10 points**.
 
-**Defensive Action Bonuses** — Poisson simulations are now run over historical defensive action rates to compute the probability of a player triggering the bonus threshold in a given match. The bonus is position-dependent:
+**Defensive Action Bonuses** — Poisson simulations are run over historical defensive action rates to compute the probability of a player triggering the bonus threshold in a given match. Importantly, those historical action counts are first opponent-adjusted using the attacking quality scalar described in Section 2.4, so the simulation operates on quality-normalized rates rather than raw totals. The bonus is position-dependent:
 
 - Defenders receive **+2 points** for achieving $\geq 10$ combined Clearances, Blocks, Interceptions, and Tackles (CBIT).
 - Midfielders and Forwards receive **+2 points** for achieving $\geq 12$ combined Clearances, Blocks, Interceptions, Tackles, and Recoveries (CBIRT).
@@ -61,7 +62,12 @@ The point valuation layer has been corrected and extended to more accurately ref
 
 ### 2.4 The "Form Trap": Opponent-Adjusted Expected Metrics
 
-A common pitfall in sports analytics is over-indexing on players who artificially inflate their underlying numbers against weak opposition. To combat this, the pipeline extracts the rolling xGA of the historical opponent faced and uses it as a defensive quality scalar to adjust the player's historical xG/xA before feeding it to the time-series decay function. This penalizes stat-padding against weak defenses and rewards production against elite defenses.
+A common pitfall in sports analytics is over-indexing on players who artificially inflate their underlying numbers against weak opposition. To combat this, the pipeline applies a **two-way opponent adjustment** before feeding data into the time-series decay function:
+
+- **Attacking Metrics (xG/xA):** Adjusted using a defensive quality scalar derived from the historical opponent's rolling xGA. This penalizes attackers who stat-pad against weak defenses and rewards those who produce against elite ones.
+- **Defensive Bonus Actions (CBIT/CBIRT):** Adjusted using an attacking quality scalar derived from the historical opponent's rolling xG. This penalizes defenders who accumulate high clearance and tackle numbers simply because they were pinned back by a heavily dominant attacking side.
+
+This dual-scalar approach ensures the model rewards true underlying quality rather than situational stat-padding — capturing the "Form Trap" symmetrically for both attackers and defenders.
 
 ---
 
@@ -101,7 +107,46 @@ $$\max_{x,\, c,\, h} \sum_{t=1}^{T} \sum_{i=1}^{N} \left( \mu_{i,t} - \nu \sigma
 
 ---
 
-## 4. Installation and Usage
+## 4. Project Structure
+
+```
+fpl-ml-manager/
+├── src/
+│   ├── main.py                  # Orchestrator: runs the full pipeline end-to-end
+│   ├── data_loader.py           # Fetches and sanitizes data from the FPL public API
+│   ├── fpl_engine.py            # Core FPLEngine class: XGBoost predictions + PuLP MILP solver
+│   ├── features.py              # Rolling time-series feature engineering
+│   ├── train_match_model.py     # Trains and serializes the XGBoost match (goals) models
+│   └── train_minutes_model.py   # Trains and serializes the XGBoost minutes classifier
+├── data/
+│   ├── fixtures.csv             # Raw fixture data from the FPL API
+│   ├── history.csv              # Player gameweek history
+│   ├── players.csv              # Player metadata and stats
+│   ├── teams.csv                # Team metadata
+│   ├── xgb_home_goals.json      # Serialized XGBoost home goals model
+│   ├── xgb_away_goals.json      # Serialized XGBoost away goals model
+│   └── processed/
+│       ├── lineup_output.txt    # Human-readable weekly squad summary
+│       └── optimal_squad_live.csv  # Raw optimized squad data (updated each run)
+├── docs/
+│   ├── README.md                # This file
+│   └── FPL_101.md               # Primer on FPL rules and scoring for new readers
+└── .github/
+    └── workflows/
+        └── weekly_update.yml    # GitHub Actions workflow (runs every Wednesday 10:00 UTC)
+```
+
+---
+
+## 5. Automated Deployment (GitHub Actions)
+
+The bot is fully self-contained and runs on a schedule via **GitHub Actions** — no manual intervention is needed during the season. Every **Wednesday at 10:00 UTC**, the `weekly_update.yml` workflow triggers automatically. It executes `src/main.py`, prints the weekly squad summary to the GitHub Step Summary UI, and commits the updated `data/` artifacts (including `optimal_squad_live.csv`) back to the repository.
+
+This means the repository itself always reflects the bot's latest recommended squad after each weekly run.
+
+---
+
+## 6. Installation and Usage
 
 ### Prerequisites
 
@@ -129,11 +174,19 @@ pip install -r requirements.txt
 python src/main.py
 ```
 
-> **Note:** On the first run, the system will automatically pull API data, extract and sanitize the required columns (`recoveries`, `yellow_cards`, `red_cards`, `penalties_missed`, `own_goals`), engineer time-series features via `src/features.py`, and train both the XGBoost match simulation models and the minutes classifier. If the match model files (`xgb_home_goals.json`, `xgb_away_goals.json`) are not found on disk, `src/main.py` will automatically trigger `src/train_match_model.py` before running the optimization sequence.
+> **Note:** On the first run, the system will automatically pull API data from the public FPL API (no authentication required), extract and sanitize the required columns (`recoveries`, `yellow_cards`, `red_cards`, `penalties_missed`, `own_goals`), engineer time-series features via `src/features.py`, and train both the XGBoost match simulation models and the minutes classifier. If the match model files (`xgb_home_goals.json`, `xgb_away_goals.json`) are not found on disk, `src/main.py` will automatically trigger `src/train_match_model.py` before running the optimization sequence.
+
+### Output
+
+After a successful run, the pipeline produces three outputs:
+
+- **Console** — the weekly summary is printed directly, including the Starting XI, Substitutes, Captain, Vice-Captain, and recommended transfers.
+- `data/processed/lineup_output.txt` — the same summary saved as a plain-text file.
+- `data/processed/optimal_squad_live.csv` — the full optimized squad as a structured CSV for downstream analysis.
 
 ---
 
-## 5. Future Work
+## 7. Future Work
 
 - **Deep Learning Integration:** Exploring Recurrent Neural Networks (LSTMs) for time-series forecasting to replace the Exponentially Weighted Moving Average (EWMA) usage allocations.
 - **Live Price-Change Inference:** Integrating market movement predictors to execute MILP transactions prior to player cost fluctuations, maximizing team value over a 38-week season.
