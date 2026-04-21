@@ -47,14 +47,13 @@ def save_to_csv(df: pd.DataFrame | None, filename: str) -> None:
 
 
 def clean_expected_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Sanitizes underlying expected metrics (xG, xA, etc.) to ensure numerical stability.
+    """Sanitizes underlying metrics.
 
     Args:
-        df (pd.DataFrame): Raw player or history data.
+        df: Raw input dataframe.
 
     Returns:
-        pd.DataFrame: Cleaned data with numeric underlying stats.
+        Dataframe with numeric values.
     """
     cols = ['expected_goals', 'expected_assists', 'expected_goal_involvements', 'expected_goals_conceded',
             'recoveries', 'yellow_cards', 'red_cards', 'penalties_missed', 'own_goals']

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import logging
 import warnings
 from pathlib import Path
 from typing import cast
@@ -10,12 +9,9 @@ import pandas as pd
 from data_loader import main as update_data
 from fpl_engine import FPLEngine
 from train_minutes_model import main as train_xgb_model
+from train_match_model import train_match_models
 
-os.environ.update(
-    {"PATH": r"C:\msys64\mingw64\bin" + os.pathsep + os.environ.get("PATH", ""), "pytensor_FLAGS": "cxx=g++"})
 warnings.filterwarnings("ignore")
-for logger in ["pymc", "pytensor"]:
-    logging.getLogger(logger).setLevel(logging.ERROR)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
@@ -27,25 +23,22 @@ SYNERGY_PAIRS = []
 
 
 def get_current_gw(fixtures_df: pd.DataFrame) -> int:
-    """
-    Determines the next upcoming Gameweek (GW) based on fixture status.
+    """Determines the next upcoming Gameweek.
 
     Args:
-        fixtures_df (pd.DataFrame): The global schedule.
+        fixtures_df: The global schedule.
 
     Returns:
-        int: The integer ID of the next Gameweek.
+        The integer ID of the next Gameweek.
     """
     upcoming = fixtures_df[~fixtures_df['finished']]
     return int(upcoming.iloc[0]['event']) if not upcoming.empty else 38
 
 
 def main() -> None:
-    """
-    Primary Orchestrator.
-    Handles data ingestion, initiates XGBoost model training, runs Bayesian
-    predictions, and executes the MILP knapsack solver to generate the optimal team.
-    Prints ONLY the final squad and transfer output for GitHub Actions capture.
+    """Primary orchestrator for FPL engine.
+
+    Runs data updates, model training, and squad optimization.
     """
     try:
         update_data()
@@ -66,6 +59,14 @@ def main() -> None:
         teams = cast(pd.DataFrame, pd.read_csv(str(PATHS["teams"]))) if PATHS["teams"].exists() else None
     except Exception:
         return
+
+    match_h_path = DATA_DIR / "xgb_home_goals.json"
+    match_a_path = DATA_DIR / "xgb_away_goals.json"
+    if not match_h_path.exists() or not match_a_path.exists():
+        try:
+            train_match_models(fixtures, history)
+        except Exception:
+            pass
 
     engine = FPLEngine(fixtures, history, players, teams_df=teams)
     current_gw = get_current_gw(fixtures)
@@ -95,7 +96,6 @@ def main() -> None:
             engine.recommend_transfers(best_squad, bank=actual_bank, gw=current_gw,
                                        proj=projections, risk=RISK_AVERSION_COEF)
         )
-
 
         final_output = f"AI FPL Manager - Weekly Summary\n{'=' * 30}\n{squad_str}\n{transfer_str}"
         with open(txt_path, 'w') as f:

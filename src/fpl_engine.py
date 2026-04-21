@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import itertools
 import warnings
 from pathlib import Path
 from typing import Any, cast
@@ -8,7 +7,6 @@ from typing import Any, cast
 import numpy as np
 import pandas as pd
 import pulp
-import pymc as pm
 
 warnings.filterwarnings("ignore")
 
@@ -25,10 +23,7 @@ DIXON_COLES_RHO = 0.03
 
 
 class FPLEngine:
-    """
-    Autonomous mathematical engine for Fantasy Premier League.
-    Handles match simulation, point projection, and MILP portfolio optimization.
-    """
+    """Autonomous engine for FPL match simulation and optimization."""
 
     def __init__(
             self,
@@ -37,14 +32,13 @@ class FPLEngine:
             players_df: pd.DataFrame,
             teams_df: pd.DataFrame | None = None
     ) -> None:
-        """
-        Initializes the engine and attempts to load the XGBoost minutes model.
+        """Initializes engine and loads XGBoost models.
 
         Args:
-            fixtures_df (pd.DataFrame): Upcoming and historical match schedule.
-            history_df (pd.DataFrame): Gameweek-level performance records for all players.
-            players_df (pd.DataFrame): Static player attributes (cost, team, position).
-            teams_df (pd.DataFrame | None): Static team attributes.
+            fixtures_df: Upcoming and historical match schedule.
+            history_df: Gameweek-level performance records.
+            players_df: Static player attributes.
+            teams_df: Static team attributes.
         """
         self.fixtures = fixtures_df
         self.history = history_df
@@ -56,99 +50,58 @@ class FPLEngine:
             self.history['team'] = self.history['player_id'].map(self.id_map)
 
         self.minutes_model = None
-        model_path = Path(__file__).resolve().parent.parent / "data" / "xgboost_minutes_model.json"
-        if model_path.exists():
-            try:
-                import xgboost as xgb
+        self.match_model_h = None
+        self.match_model_a = None
+
+        data_dir = Path(__file__).resolve().parent.parent / "data"
+        try:
+            import xgboost as xgb
+            model_path = data_dir / "xgboost_minutes_model.json"
+            if model_path.exists():
                 self.minutes_model = xgb.XGBClassifier()
                 self.minutes_model.load_model(model_path)
-            except ImportError:
-                pass
-            except Exception:
-                pass
+
+            model_h_path = data_dir / "xgb_home_goals.json"
+            if model_h_path.exists():
+                self.match_model_h = xgb.Booster()
+                self.match_model_h.load_model(model_h_path)
+
+            model_a_path = data_dir / "xgb_away_goals.json"
+            if model_a_path.exists():
+                self.match_model_a = xgb.Booster()
+                self.match_model_a.load_model(model_a_path)
+        except ImportError:
+            pass
 
     @staticmethod
     def _get_recent_data(df: pd.DataFrame, col: str, gw: int, n: int = 10, decay_rate: float = 0.15) -> pd.DataFrame:
-        """Applies Exponentially Weighted Moving Average (EWMA) time-decay to past matches."""
+        """Applies EWMA time-decay to past matches.
+
+        Args:
+            df: Input dataframe.
+            col: Column representing gameweek/time.
+            gw: Current gameweek.
+            n: Window size.
+            decay_rate: Exponential decay factor.
+
+        Returns:
+            Dataframe with calculated weights.
+        """
         w = df[(df[col] >= gw - n) & (df[col] < gw)].copy()
         if w.empty: return w
         m = w[col].max()
         w['weight'] = np.exp(-decay_rate * (m - w[col]))
         return w
 
-    @staticmethod
-    def _solve_bayesian_regression(df: pd.DataFrame) -> tuple[dict[int, dict[str, float]], float, float]:
-        """
-        Calculates team strengths using Bayesian Poisson Regression.
+    def _calculate_minute_probs(self, gw: int, n: int = 10) -> dict[int, dict[str, float]]:
+        """Calculates expected minutes probabilities.
 
-        Utilizes Automatic Differentiation Variational Inference (ADVI) to approximate
-        the posterior distributions of latent team strength parameters, offering a
-        lightweight and fast alternative to standard MCMC stepping.
+        Args:
+            gw: Current gameweek.
+            n: Window size.
 
         Returns:
-            tuple: (Team strengths dictionary, Home Advantage constant, Intercept constant)
-        """
-        if len(df) < 10:
-            return {t: {'attack': 0.0, 'defense': 0.0} for t in range(1, 21)}, 0.2, 0.1
-
-        teams = pd.unique(df[['team_h', 'team_a']].values.ravel('K'))
-        team_mapping = {team: i for i, team in enumerate(teams)}
-        num_teams = len(teams)
-
-        gws = sorted(df['event'].unique())
-        time_mapping = {gw: i for i, gw in enumerate(gws)}
-        num_timesteps = len(gws)
-
-        home_idx = df['team_h'].map(team_mapping).values
-        away_idx = df['team_a'].map(team_mapping).values
-        time_idx = df['event'].map(time_mapping).values
-        home_goals = df['team_h_score'].values
-        away_goals = df['team_a_score'].values
-
-        with pm.Model() as _:
-            sigma_evol = pm.HalfNormal('sigma_evol', 0.1)
-            alpha = pm.GaussianRandomWalk('alpha', sigma=sigma_evol, shape=(num_teams, num_timesteps),
-                                          init_dist=pm.Normal.dist(0, 0.5))
-            beta = pm.GaussianRandomWalk('beta', sigma=sigma_evol, shape=(num_teams, num_timesteps),
-                                         init_dist=pm.Normal.dist(0, 0.5))
-
-            gamma = pm.Normal('home_adv', mu=0.2, sigma=0.1)
-            delta = pm.Normal('intercept', mu=0, sigma=0.5)
-
-            home_theta = pm.math.exp(
-                alpha[home_idx, time_idx] + beta[away_idx, time_idx] + gamma + delta)  # type: ignore
-            away_theta = pm.math.exp(alpha[away_idx, time_idx] + beta[home_idx, time_idx] + delta)  # type: ignore
-
-            alpha_disp = pm.Exponential('alpha_disp', 1.0)
-            pm.NegativeBinomial('home_obs', mu=home_theta, alpha=alpha_disp, observed=home_goals)
-            pm.NegativeBinomial('away_obs', mu=away_theta, alpha=alpha_disp, observed=away_goals)
-
-            approx = pm.fit(n=20000, progressbar=False)
-            trace = approx.sample(draws=1000)
-
-        post = getattr(trace, 'posterior', trace)
-        alpha_mean = post['alpha'].mean(dim=['chain', 'draw']).values if hasattr(post, 'mean') else np.mean(
-            post['alpha'], axis=0)
-        beta_mean = post['beta'].mean(dim=['chain', 'draw']).values if hasattr(post, 'mean') else np.mean(post['beta'],
-                                                                                                          axis=0)
-        home_adv_mean = float(post['home_adv'].mean().item() if hasattr(post, 'mean') else np.mean(post['home_adv']))
-        intercept_mean = float(post['intercept'].mean().item() if hasattr(post, 'mean') else np.mean(post['intercept']))
-
-        team_strengths = {}
-        for t, i in team_mapping.items():
-            team_strengths[t] = {
-                'attack': float(alpha_mean[i, -1] if alpha_mean.ndim > 1 else alpha_mean[i]),
-                'defense': float(beta_mean[i, -1] if beta_mean.ndim > 1 else beta_mean[i])
-            }
-
-        return team_strengths, home_adv_mean, intercept_mean
-
-    def _calculate_minute_probs(self, gw: int, n: int = 10) -> dict[int, dict[str, float]]:
-        """
-        Calculates expected minutes represented as a discrete 3-state probability distribution.
-
-        Uses trained XGBoost Classifier via vectorized inference if available to predict
-        the probability of Start (>= 60), Sub (> 0), or Bench (0). Falls back to EWMA decay.
+            Mapping of player IDs to minute probabilities.
         """
         past_data = self.history[self.history['round'] < gw].copy()
         if past_data.empty: return {}
@@ -211,22 +164,16 @@ class FPLEngine:
                 }
             return res
 
-    def _calculate_usage_stats(self, gw: int, n: int = 10, team_strengths: dict | None = None) -> dict[
-        int, dict[str, Any]]:
-        """
-        Allocates team-level expected metrics to individual players based on Usage Rate.
-
-        Applies Opponent-Adjusted xG/xA mapping. It mathematically divides historic
-        underlying metrics by the Bayesian defensive parameter of the opponent faced
-        in that specific match, penalizing stat-padding against weak defenses.
+    def _calculate_usage_stats(self, gw: int, n: int = 10, team_strengths: dict | None = None) -> dict[int, dict[str, Any]]:
+        """Allocates team-level expected metrics to individual players.
 
         Args:
-            gw (int): Current Gameweek.
-            n (int): Size of rolling window.
-            team_strengths (dict | None): Bayesian posteriors to adjust historical xG.
+            gw: Current Gameweek.
+            n: Window size.
+            team_strengths: Opponent defensive strengths.
 
         Returns:
-            dict: Usage rates mapped by player ID.
+            Usage rates mapped by player ID.
         """
         w = self._get_recent_data(self.history, 'round', gw, n)
         if w.empty: return {}
@@ -258,8 +205,7 @@ class FPLEngine:
 
             cbit = g['clearances_blocks_interceptions'] + g['tackles']
             cbirt = cbit + g.get('recoveries', 0)
-            neg = g.get('yellow_cards', 0) + g.get('red_cards', 0) * 3 + g.get('penalties_missed', 0) * 2 + g.get(
-                'own_goals', 0) * 2
+            neg = g.get('yellow_cards', 0) + g.get('red_cards', 0)*3 + g.get('penalties_missed', 0)*2 + g.get('own_goals', 0)*2
 
             res[p_id] = {'share_xg': (g['adj_xg'] * wg).sum() / t['xg'],
                          'share_xa': (g['adj_xa'] * wg).sum() / t['xa'],
@@ -271,25 +217,32 @@ class FPLEngine:
         return res
 
     def train_and_predict(self, current_gw: int, horizon: int = 5, n_recent: int = 10) -> pd.DataFrame:
-        """
-        Generates 3-State Expected Value (EV) projections for the optimization horizon.
-        Calculates Expected Points = P(Start) * E[Pts|Start] + P(Sub) * E[Pts|Sub]
-        """
-        finished = self.fixtures[(self.fixtures['finished'] == True) & (self.fixtures['event'] < current_gw)]
-        bayesian_strengths, home_adv, intercept = self._solve_bayesian_regression(finished)
+        """Generates projections for optimization horizon.
 
-        upcoming = self.fixtures[
-            (self.fixtures['event'] >= current_gw) & (self.fixtures['event'] < current_gw + horizon)]
+        Args:
+            current_gw: Target gameweek.
+            horizon: Weeks to predict.
+            n_recent: Lookback window.
+
+        Returns:
+            Dataframe of player point projections.
+        """
+        from src.features import build_match_features
+        import xgboost as xgb
+
+        upcoming = self.fixtures[(self.fixtures['event'] >= current_gw) & (self.fixtures['event'] < current_gw + horizon)]
+        match_features = build_match_features(upcoming, self.history)
+
         match_sims = {}
-
-        for _, row in upcoming.iterrows():
+        for _, row in match_features.iterrows():
             h, a, gw = row['team_h'], row['team_a'], row['event']
 
-            s_h = bayesian_strengths.get(h, {'attack': 0.0, 'defense': 0.0})
-            s_a = bayesian_strengths.get(a, {'attack': 0.0, 'defense': 0.0})
-
-            lambda_h = np.exp(s_h['attack'] + s_a['defense'] + home_adv + intercept)
-            lambda_a = np.exp(s_a['attack'] + s_h['defense'] + intercept)
+            if self.match_model_h and self.match_model_a:
+                X = xgb.DMatrix(pd.DataFrame([row[['h_xg', 'h_xga', 'a_xg', 'a_xga', 'strength_diff']]]))
+                lambda_h = self.match_model_h.predict(X)[0]
+                lambda_a = self.match_model_a.predict(X)[0]
+            else:
+                lambda_h, lambda_a = 1.5, 1.0
 
             sim_h_goals = np.random.poisson(lambda_h, 1000)
             sim_a_goals = np.random.poisson(lambda_a, 1000)
@@ -310,7 +263,7 @@ class FPLEngine:
                 'sim_goals': sim_a_goals
             }
 
-        usage = self._calculate_usage_stats(current_gw, n_recent, team_strengths=bayesian_strengths)
+        usage = self._calculate_usage_stats(current_gw, n_recent)
         min_probs = self._calculate_minute_probs(current_gw, 10)
 
         projections = []
@@ -320,7 +273,7 @@ class FPLEngine:
             chance = 100 if pd.isna(chance) else chance
             if p['status'] in ['s', 'n'] or chance < 25: continue
 
-            stats = usage.get(pid, {'share_xg': 0, 'share_xa': 0, 'share_cbit': 0, 'saves_p90': 0, 'team': None})
+            stats = usage.get(pid, {'share_xg': 0, 'share_xa': 0, 'team': None})
             if stats['share_xg'] == 0 and stats['share_xa'] == 0 and pos > 1: continue
 
             fitness_factor = chance / 100.0
@@ -372,9 +325,17 @@ class FPLEngine:
     def optimize_squad(df: pd.DataFrame, budget: float = 100.0, risk_aversion: float = 0.05,
                        stack_bonus: float = 2.5,
                        synergy_pairs: list[tuple[int, int, float]] | None = None) -> pd.DataFrame:
-        """
-        Solves the combinatorial knapsack problem using MILP.
-        Maximizes risk-adjusted returns bounded by exact FPL rules.
+        """Runs MILP optimization to select squad.
+
+        Args:
+            df: Projections dataframe.
+            budget: Constraints.
+            risk_aversion: Penalty.
+            stack_bonus: Multiplier.
+            synergy_pairs: Pairings.
+
+        Returns:
+            Optimized dataframe.
         """
         if df.empty: return pd.DataFrame()
         if synergy_pairs is None: synergy_pairs = []
@@ -435,7 +396,7 @@ class FPLEngine:
 
     @staticmethod
     def pick_team_sheet(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, int, int]:
-        """Separates the optimized 15-man squad into Starting XI and Substitutes based on EV."""
+        """Splits squad into XI and subs."""
         s = df.sort_values('next_gw_xp', ascending=False)
         xi_ids = []
         for p, m in MIN_STARTERS.items(): xi_ids.extend(s[s['pos_id'] == p].head(m)['id'].tolist())
@@ -449,27 +410,7 @@ class FPLEngine:
 
     def recommend_transfers(self, squad: pd.DataFrame, bank: float, free: int = 1, gw: int | None = None,
                             proj: pd.DataFrame | None = None, risk: float = 0.05, horizon: int = 5) -> dict[str, Any]:
-        """
-        Evaluates optimal transfers using Receding Horizon Control (RHC).
-
-        Transitions from a static 1D block optimization to a 2D matrix (player x time)
-        to mathematically conserve and bank Free Transfers across the multi-week horizon.
-        This allows the solver to evaluate the true utility of executing transfers versus
-        rolling them to future gameweeks.
-
-        Args:
-            squad (pd.DataFrame): The current 15-man squad.
-            bank (float): Available budget in the bank.
-            free (int, optional): Number of free transfers currently available (1 to 5). Defaults to 1.
-            gw (int | None, optional): The starting Gameweek for the horizon. Defaults to None.
-            proj (pd.DataFrame | None, optional): Pre-calculated player projections. Defaults to None.
-            risk (float, optional): Risk aversion coefficient (variance penalty). Defaults to 0.05.
-            horizon (int, optional): Number of gameweeks to look ahead. Defaults to 5.
-
-        Returns:
-            dict[str, Any]: A dictionary containing the recommended 'action' (e.g., '1_TRANSFER'),
-                            a list of 'transfers_made' tuples, the 'net_score' (EV), and the 'cost' (hits).
-        """
+        """Evaluates optimal transfers via RHC."""
         up = self.fixtures[~self.fixtures['finished']]
         gw_val = 38 if up.empty else int(up['event'].min()) if gw is None else int(gw)
         if proj is None:
@@ -549,7 +490,7 @@ class FPLEngine:
         }
 
     def get_transfer_recommendation_str(self, rec: dict[str, Any]) -> str:
-        """Formats the recommended transfer actions as a string."""
+        """Formats transfer actions as string."""
         out = "\nTRANSFER SUMMARY\n" + self._to_ascii_table(pd.DataFrame(
             [{'Action': rec['action'], 'Cost': f"-{rec['cost']}", 'Net RHC EV': float(rec['net_score'])}]))
         if rec['action'] != 'HOLD':
@@ -559,7 +500,7 @@ class FPLEngine:
 
     @staticmethod
     def _to_ascii_table(df: pd.DataFrame | None) -> str:
-        """Utility function to render DataFrames as CLI-friendly ASCII tables."""
+        """Utility to render DataFrames as tables."""
         if df is None or df.empty: return "(empty)"
         df = df.fillna('')
         c, r = [str(col) for col in df.columns], [[str(v) for v in row] for _, row in df.iterrows()]
@@ -571,7 +512,7 @@ class FPLEngine:
         return '\n'.join([b, fmt(c), b] + [fmt(row) for row in r] + [b])
 
     def format_squad(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Formats squad output for display."""
+        """Formats squad output."""
         out = df.copy()
         out['Team'], out['Pos'] = out['team_id'].map(TEAM_MAP).fillna(out['team_id']), out['pos_id'].map(POS_MAP)
         out['XP(1)'], out['XP(5)'], out['Price'] = out['next_gw_xp'].round(1), out['horizon_xp'].round(1), out[
@@ -580,7 +521,7 @@ class FPLEngine:
         return out[['name', 'Team', 'Pos', 'Price', 'XP(1)', 'XP(5)', 'Role']].rename(columns={'name': 'Name'})
 
     def get_squad_str(self, xi: pd.DataFrame, bench: pd.DataFrame, cap: int, vice: int) -> str:
-        """Formats the Starting XI and Bench as a string."""
+        """Formats XI and Bench as string."""
         out = ""
         for title, d in [("STARTING XI", xi), ("SUBSTITUTES", bench)]:
             out += f"\n{title}\n"

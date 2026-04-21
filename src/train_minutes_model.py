@@ -14,17 +14,13 @@ DATA_DIR = PROJECT_ROOT / "data"
 
 
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Transforms raw historical gameweek data into time-series features.
-
-    To prevent data leakage, predictions for Gameweek N are modeled exclusively
-    using lagged metrics from Gameweek N-1, N-2, and N-3.
+    """Generates time-series features for minute prediction.
 
     Args:
-        df (pd.DataFrame): Raw historical match records.
+        df: Historical match records.
 
     Returns:
-        pd.DataFrame: DataFrame enriched with rolling averages and state flags.
+        Dataframe with engineered features.
     """
     df = df.sort_values(['player_id', 'round']).copy()
 
@@ -34,12 +30,8 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     df['lag_2_minutes'] = df.groupby('player_id')['minutes'].shift(2).fillna(0)
     df['lag_3_minutes'] = df.groupby('player_id')['minutes'].shift(3).fillna(0)
 
-    df['roll_3_avg'] = df.groupby('player_id')['lag_1_minutes'].rolling(3, min_periods=1).mean().reset_index(0,
-                                                                                                             drop=True).fillna(
-        0)
-    df['roll_5_avg'] = df.groupby('player_id')['lag_1_minutes'].rolling(5, min_periods=1).mean().reset_index(0,
-                                                                                                             drop=True).fillna(
-        0)
+    df['roll_3_avg'] = df.groupby('player_id')['lag_1_minutes'].rolling(3, min_periods=1).mean().reset_index(0, drop=True).fillna(0)
+    df['roll_5_avg'] = df.groupby('player_id')['lag_1_minutes'].rolling(5, min_periods=1).mean().reset_index(0, drop=True).fillna(0)
 
     df['played_last_week'] = (df['lag_1_minutes'] > 0).astype(int)
 
@@ -47,11 +39,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
-    """
-    Data pipeline executable for the Minutes ML Model.
-    Ingests history, engineers features, trains the XGBClassifier, and persists
-    the serialized model to disk for fast inference during the optimization loop.
-    """
+    """Trains and saves the XGBoost minutes model."""
     history_path = DATA_DIR / "history.csv"
     if not history_path.exists():
         return
