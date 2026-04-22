@@ -3,7 +3,7 @@ name: FPL Weekly Update
 on:
   schedule:
     - cron: '0 10 * * 3'  # Every Wednesday at 10:00 UTC
-  workflow_dispatch:      # Manual trigger
+  workflow_dispatch:       # Manual trigger
 
 permissions:
   contents: write
@@ -26,37 +26,21 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Update Data
-      run: python src/data_loader.py
+    - name: Run pipeline
+      # main.py calls refresh_data() internally, trains any missing models,
+      # runs the optimizer, and writes data/processed/lineup.md
+      run: python src/main.py
 
-    - name: Run Optimization & Show Lineup
-      run: |
-        # 1. Run the AI and capture output to a file AND console
-        python src/main.py > lineup_output.txt
-        cat lineup_output.txt
+    - name: Publish lineup to Job Summary
+      run: cat data/processed/lineup.md >> $GITHUB_STEP_SUMMARY
 
-        # 2. Add a title to the GitHub Summary Page
-        echo "## FPL AI Weekly Lineup" >> $GITHUB_STEP_SUMMARY
-        
-        # 3. Add the lineup inside a code block so it looks like a table
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        cat lineup_output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-
-    - name: Commit and Push Changes
+    - name: Commit and push changes
       run: |
         git config --global user.name "FPL Bot"
         git config --global user.email "bot@noreply.github.com"
-        
-        # Use -f to FORCE add the files, overriding any .gitignore rules
-        if [ -f data/processed/optimal_squad_live.csv ]; then
-          git add -f data/processed/optimal_squad_live.csv
-        fi
-        
-        # Force add CSVs and the newly serialized XGBoost model
-        git add -f data/*.csv
-        git add -f data/*.json
-        
-        # Commit if there are changes
-        git diff --staged --quiet || git commit -m "Auto-update: Optimized Squad for GW $(date +'%Y-%m-%d')"
+
+        # Data CSVs, model artifacts (.json / .joblib), squad snapshot, lineup report
+        git add -f data/*.csv data/*.json data/processed/lineup.md data/processed/squad_snapshot.csv 2>/dev/null || true
+
+        git diff --staged --quiet || git commit -m "GW update $(date +'%Y-%m-%d')"
         git push

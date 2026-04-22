@@ -1,33 +1,64 @@
+"""XGBoost Poisson match model + Dixon-Coles low-score correction."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
 import xgboost as xgb
-from pathlib import Path
-from features import build_match_features
+from scipy.stats import poisson
 
-def train_match_models(fixtures: pd.DataFrame, history: pd.DataFrame) -> None:
-    """Trains XGBoost Poisson models for match outcome simulation.
+from features import build_match_features, match_feature_cols
 
-    Args:
-        fixtures: Fixture schedule data.
-        history: Historical player match data.
-    """
-    df = build_match_features(fixtures, history)
-    past = df[df['finished'] == True]
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DC_RHO = -0.10
 
-    features = ['h_xg', 'h_xga', 'a_xg', 'a_xga', 'strength_diff']
 
-    X = past[features]
-    y_h, y_a = past['team_h_score'], past['team_a_score']
+def train_match_models(
+    fixtures: pd.DataFrame, history: pd.DataFrame, teams: pd.DataFrame
+) -> None:
+    """Trains and serializes home / away goal Poisson regressors."""
+    df = build_match_features(fixtures, history, teams)
+    past = df[df["finished"] == True].dropna(subset=["team_h_score", "team_a_score"])
+    if past.empty:
+        return
+    X = past[match_feature_cols()].astype(float)
+    params = dict(objective="count:poisson", learning_rate=0.05, max_depth=4,
+                  subsample=0.85, colsample_bytree=0.85, verbosity=0)
+    for label, side in (("team_h_score", "home"), ("team_a_score", "away")):
+        m = xgb.train(params, xgb.DMatrix(X, label=past[label].astype(int)), num_boost_round=200)
+        m.save_model(DATA_DIR / f"xgb_{side}_goals.json")
 
-    params = {'objective': 'count:poisson', 'learning_rate': 0.1, 'max_depth': 4}
 
-    model_h = xgb.train(params, xgb.DMatrix(X, label=y_h), num_boost_round=100)
-    model_a = xgb.train(params, xgb.DMatrix(X, label=y_a), num_boost_round=100)
+def _dc_tau(x: int, y: int, lh: float, la: float, rho: float = DC_RHO) -> float:
+    """Dixon-Coles τ correction for low scoring outcomes (0-0, 0-1, 1-0, 1-1)."""
+    if x == 0 and y == 0: return 1 - lh * la * rho
+    if x == 0 and y == 1: return 1 + lh * rho
+    if x == 1 and y == 0: return 1 + la * rho
+    if x == 1 and y == 1: return 1 - rho
+    return 1.0
 
-    path = Path(__file__).resolve().parent.parent / "data"
-    model_h.save_model(path / "xgb_home_goals.json")
-    model_a.save_model(path / "xgb_away_goals.json")
+
+def score_matrix(lh: float, la: float, max_goals: int = 8) -> np.ndarray:
+    """DC-adjusted joint score probability matrix indexed [home_goals, away_goals]."""
+    ph = poisson.pmf(np.arange(max_goals + 1), lh)
+    pa = poisson.pmf(np.arange(max_goals + 1), la)
+    M = np.outer(ph, pa)
+    for x in range(2):
+        for y in range(2):
+            M[x, y] *= _dc_tau(x, y, lh, la)
+    return M / M.sum() if M.sum() > 0 else M
+
+
+def clean_sheet_probs(lh: float, la: float) -> tuple[float, float]:
+    """Returns (home_CS, away_CS) analytically from the DC score matrix."""
+    M = score_matrix(lh, la)
+    return float(M[:, 0].sum()), float(M[0, :].sum())
+
 
 if __name__ == "__main__":
-    fix = pd.read_csv("../data/fixtures.csv")
-    hist = pd.read_csv("../data/history.csv")
-    train_match_models(fix, hist)
+    train_match_models(
+        pd.read_csv(DATA_DIR / "fixtures.csv"),
+        pd.read_csv(DATA_DIR / "history.csv"),
+        pd.read_csv(DATA_DIR / "teams.csv"),
+    )
