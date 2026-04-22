@@ -1,7 +1,7 @@
 pandas
 numpy
+scipy
 requests
 pulp
-pymc
 xgboost
 scikit-learn
