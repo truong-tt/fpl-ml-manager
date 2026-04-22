@@ -148,7 +148,7 @@ Simple and arguably less principled than constrained optimization [[5](#ref-cher
 
 For each player $i$ and upcoming GW $t$, we locate every fixture their club plays that GW (0, 1, or 2) and build one feature row per fixture. Quantile predictions are then:
 
-1. **Scaled by forward-looking availability** $a_i = \text{chance\_of\_playing\_next\_round}_i / 100$, zeroed if the player's `status` is suspended/out/unavailable. Historical availability is already captured implicitly through the lagged-minute features, so this only adds forward-looking injury information.
+1. **Scaled by forward-looking availability** $a_i = \text{chance of playing next round}_i / 100$, zeroed if the player's `status` is suspended/out/unavailable. Historical availability is already captured implicitly through the lagged-minute features, so this only adds forward-looking injury information.
 2. **Aggregated across fixtures per $(i, t)$** by simple summation:
 
 $$
