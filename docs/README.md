@@ -117,7 +117,7 @@ Target: raw FPL `total_points` per player per GW. **This subsumes every scoring 
 
 Independently fit quantile regressors can cross — meaning the predicted 10th percentile can end up greater than the predicted 50th percentile for some rows, which is nonsensical. We enforce monotonicity row-wise by sorting the three predictions ascending at inference:
 
-$$[\,\hat{q}_{10},\, \hat{q}_{50},\, \hat{q}_{90}\,] \leftarrow \operatorname{sort}\!\bigl([\,\hat{q}_{10},\, \hat{q}_{50},\, \hat{q}_{90}\,]\bigr)$$
+$$[\hat{q}_{10},\; \hat{q}_{50},\; \hat{q}_{90}] \;\leftarrow\; \text{sort}\bigl([\hat{q}_{10},\; \hat{q}_{50},\; \hat{q}_{90}]\bigr)$$
 
 Simple and arguably less principled than constrained optimization [[5](#ref-chernozhukov)], but empirically affects under 2% of rows in our data.
 
@@ -230,15 +230,15 @@ Chip activation is a convex function of fixture quality that the weekly MILP doe
 
 **Triple Captain** — pick the GW and owned player maximizing single-GW median EV:
 
-$$t^{\star},\, i^{\star} \;=\; \operatorname*{arg\,max}_{t,\, i \in \text{squad}} \;\; \hat{q}^{(i,t)}_{50}$$
+$$t^{\star},\; i^{\star} \;=\; \arg\max_{t,\; i \in \text{squad}} \; \hat{q}^{(i,t)}_{50}$$
 
 **Bench Boost** — pick the GW with the highest total bench EV:
 
-$$t^{\star} \;=\; \operatorname*{arg\,max}_{t} \;\sum_{i \in \text{bench}} \hat{q}^{(i,t)}_{50}$$
+$$t^{\star} \;=\; \arg\max_{t} \; \sum_{i \in \text{bench}} \hat{q}^{(i,t)}_{50}$$
 
 **Free Hit** — pick the GW with the most teams blanking (i.e. not playing that week):
 
-$$t^{\star} \;=\; \operatorname*{arg\,max}_{t} \;\; \bigl| \\{ k : k \text{ blanks at } t \\} \bigr|$$
+$$t^{\star} \;=\; \arg\max_{t} \; \bigl| \\{ k : k \text{ blanks at } t \\} \bigr|$$
 
 **Wildcard** — trigger if the RHC proposes at least 4 transfers IN or at least 2 hits, since the MILP's willingness to pay hits is a proxy signal that the current squad is far from optimal.
 
