@@ -6,7 +6,7 @@
 
 A data-driven agent that picks and manages a 15-player FPL squad end-to-end. The pipeline learns per-player point distributions with quantile-regression gradient boosting, estimates match-level goal rates with a Dixon-Coles-corrected Poisson model, and then solves a single joint MILP for the 15-man squad, the starting XI, and the captain across a rolling horizon.
 
-> New to FPL scoring rules and constraints? Start with the [FPL 101 primer](FPL_101.md): the math below assumes you understand clean sheets, appearance points, and the transfer/chip system.
+> New to FPL scoring rules and constraints? Start with the [FPL 101 primer](FPL_101.md), where the math assumes you understand clean sheets, appearance points, and the transfer/chip system.
 
 ---
 
@@ -107,15 +107,15 @@ Sanity check: holding $\lambda_h = 1.5$ fixed, increasing $\lambda_a$ from $0.5$
 
 ### 4.1 Why quantile regression
 
-FPL points per player per GW are discrete, heavy-tailed, and bimodal (zero for DNPs plus a wide distribution when playing). A single point estimate of the mean throws away information the optimizer needs: specifically, we want the **ceiling** (for Triple Captain timing), a **downside floor** (for risk budgeting), and a consistent **variance estimate** (for portfolio selection). We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \\{0.10, 0.50, 0.90\\}$, minimizing the pinball loss [[4](#ref-koenker)]:
+FPL points per player per GW are discrete, heavy-tailed, and bimodal (zero for DNPs plus a wide distribution when playing). A single point estimate of the mean throws away information the optimizer needs, specifically: we want the **ceiling** (for Triple Captain timing), a **downside floor** (for risk budgeting), and a consistent **variance estimate** (for portfolio selection). We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \\{0.10, 0.50, 0.90\\}$, minimizing the pinball loss [[4](#ref-koenker)]:
 
 $$\mathcal{L}_\alpha(y, \hat{y}) = \begin{cases} \alpha \cdot (y - \hat{y}) & \text{if } y \geq \hat{y} \\ (1 - \alpha) \cdot (\hat{y} - y) & \text{if } y < \hat{y} \end{cases}$$
 
-Target: raw FPL `total_points` per player per GW. **This subsumes every scoring rule end-to-end.** The model learns goal points, assist points, clean-sheet bonuses, the defensive-action bonus thresholds, BPS, and all negative deductions jointly from the data: there is no hand-coded scoring table.
+Target: raw FPL `total_points` per player per GW. **This subsumes every scoring rule end-to-end.** The model learns goal points, assist points, clean-sheet bonuses, the defensive-action bonus thresholds, BPS, and all negative deductions jointly from the data; there is no hand-coded scoring table.
 
 ### 4.2 Post-hoc non-crossing
 
-Independently fit quantile regressors can cross: meaning the predicted 10th percentile can end up greater than the predicted 50th percentile for some rows, which is nonsensical. We enforce monotonicity row-wise by sorting the three predictions ascending at inference:
+Independently fit quantile regressors can cross, meaning the predicted 10th percentile can end up greater than the predicted 50th percentile for some rows, which is nonsensical. We enforce monotonicity row-wise by sorting the three predictions ascending at inference:
 
 $$[\hat{q}_{10},\; \hat{q}_{50},\; \hat{q}_{90}] \;\leftarrow\; \text{sort}\bigl([\hat{q}_{10},\; \hat{q}_{50},\; \hat{q}_{90}]\bigr)$$
 
@@ -134,11 +134,11 @@ A blank GW yields $F_{i,t} = \emptyset$ and therefore $\hat{q}^{(i,t)}_\alpha = 
 
 ### 4.4 Variance estimate from quantile spread
 
-The optimizer's risk term needs a scalar variance per $(i, t)$. Assuming the points distribution is approximately Gaussian in the central mass (a coarse but serviceable approximation for players expected to play), the interval from the 10th to the 90th percentile spans about 2.56 standard deviations: formally, $\Phi^{-1}(0.9) - \Phi^{-1}(0.1) \approx 2.56$:
+The optimizer's risk term needs a scalar variance per $(i, t)$. Assuming the points distribution is approximately Gaussian in the central mass (a coarse but serviceable approximation for players expected to play), the interval from the 10th to the 90th percentile spans about 2.56 standard deviations (formally, $\Phi^{-1}(0.9) - \Phi^{-1}(0.1) \approx 2.56$):
 
 $$\hat{\sigma}^2_{i,t} \approx \left( \frac{\hat{q}^{(i,t)}_{90} - \hat{q}^{(i,t)}_{10}}{2.56} \right)^2$$
 
-This is lighter than a full Monte-Carlo covariance estimate (which can't be consumed by the linear CBC MILP solver anyway) but preserves the core signal: players with wide quantile spreads are penalized more heavily in the squad objective.
+This is lighter than a full Monte-Carlo covariance estimate (which can't be consumed by the linear CBC MILP solver anyway) but preserves the core signal; players with wide quantile spreads are penalized more heavily in the squad objective.
 
 ---
 
@@ -158,7 +158,7 @@ Per player $i \in \\{1, \dots, N\\}$ and GW $t \in \\{t_0, \dots, t_0 + H - 1\\}
 | $\text{sv}_t$ | integer, 0 to 5 | Free transfers saved out of GW $t$ |
 | $h_t$ | non-negative integer | Number of 4-pt hits taken at GW $t$ |
 
-For the cold-start solve, $x_{i,t}$ collapses to a single $x_i$ (no transfers yet: squad fixed across the horizon).
+For the cold-start solve, $x_{i,t}$ collapses to a single $x_i$ (no transfers yet, with the squad fixed across the horizon).
 
 ### 5.2 Objective
 
@@ -168,9 +168,9 @@ Term by term: starter XP, bench auto-sub EV, captain double, risk penalty, diffe
 
 Design notes:
 
-- $\mu_{i,t} = \hat{q}^{(i,t)}_{50}$ is the median EV: more robust to the heavy right tail than the mean for this objective.
-- The captain term adds $\mu_{i,t}$ on top of the starter term, which already counts $\mu_{i,t}$ once: summing to the correct doubling. Triple Captain is handled separately in the chip module (§6).
-- Bench weight $b = 0.15$ is an empirical estimate of auto-sub realization: roughly $P(\text{bench player auto-subbed in})$ multiplied by the average fraction of starter's points retained.
+- $\mu_{i,t} = \hat{q}^{(i,t)}_{50}$ is the median EV, which is more robust to the heavy right tail than the mean for this objective.
+- The captain term adds $\mu_{i,t}$ on top of the starter term, which already counts $\mu_{i,t}$ once, summing to the correct doubling. Triple Captain is handled separately in the chip module (§6).
+- Bench weight $b = 0.15$ is an empirical estimate of auto-sub realization, roughly $P(\text{bench player auto-subbed in})$ multiplied by the average fraction of starter's points retained.
 - **EO tilt** $\eta \cdot \mu \cdot (1 - \text{EO})$ is zero by default, which targets pure points EV. Setting $\eta > 0$ late in the season pushes the MILP toward differentials (high EV, low ownership) to maximize rank-EV rather than points-EV. This is a linearization of the classic "rank chase" objective; Markowitz-style portfolio theory [[7](#ref-markowitz)] motivates the $\mu - \nu \sigma^2$ structure of the baseline term.
 - The quadratic portfolio variance $x^\top \Sigma x$ would require MIQP; since CBC is LP-only, we take the diagonal approximation. Within-team correlation is bounded by the 3-per-club constraint and implicit in learned $\hat{\sigma}^2_{i,t}$ values anyway.
 
@@ -200,7 +200,7 @@ $$\sum_{i\,:\,\text{pos}(i) = 1} s_{i,t} = 1$$
 
 $$\sum_{i\,:\,\text{pos}(i) = p} s_{i,t} \geq r_p, \qquad r_1 = 1,\; r_2 = 3,\; r_3 = 2,\; r_4 = 1$$
 
-The $c_{i,t} \leq s_{i,t}$ constraint closes the captain-on-the-bench bug present in the previous iteration: the captain is now guaranteed to start.
+The $c_{i,t} \leq s_{i,t}$ constraint closes the captain-on-the-bench bug present in the previous iteration; the captain is now guaranteed to start.
 
 ### 5.4 Transfer accounting (RHC only)
 
@@ -254,7 +254,7 @@ fpl-ml-manager/
 │   ├── features.py              # Elo + rolling team/player features
 │   ├── train_match_model.py     # Poisson goals + DC τ + analytic CS
 │   ├── train_points_model.py    # Quantile XGBoost (q10/q50/q90)
-│   ├── fpl_engine.py            # Inference engine: projection frame builder
+│   ├── fpl_engine.py            # Inference engine, projection frame builder
 │   ├── optimizer.py             # MILP squad + XI + captain, RHC transfers
 │   └── chips.py                 # TC / BB / FH / WC heuristics
 ├── data/
@@ -292,7 +292,7 @@ First run trains every model artifact from scratch; subsequent runs reuse `data/
 
 <a id="ref-xgboost"></a>**[1]** Chen, T. and Guestrin, C. (2016). *XGBoost: A Scalable Tree Boosting System*. Proceedings of KDD '16. [Link](https://arxiv.org/abs/1603.02754).
 
-<a id="ref-dc"></a>**[2]** Dixon, M.J. and Coles, S.G. (1997). *Modelling Association Football Scores and Inefficiencies in the Football Betting Market*. Journal of the Royal Statistical Society: Series C (Applied Statistics), Vol. 46, No. 2. [Link](https://www.ajbuckeconbikesail.net/wkpapers/Airports/MVPoisson/soccer_betting.pdf).
+<a id="ref-dc"></a>**[2]** Dixon, M.J. and Coles, S.G. (1997). *Modelling Association Football Scores and Inefficiencies in the Football Betting Market*. Journal of the Royal Statistical Society, Series C (Applied Statistics), Vol. 46, No. 2. [Link](https://www.ajbuckeconbikesail.net/wkpapers/Airports/MVPoisson/soccer_betting.pdf).
 
 <a id="ref-maher"></a>**[3]** Maher, M.J. (1982). *Modelling Association Football Scores*. Statistica Neerlandica, Vol. 36, Issue 3. [Link](http://www.90minut.pl/misc/maher.pdf).
 
@@ -300,13 +300,13 @@ First run trains every model artifact from scratch; subsequent runs reuse `data/
 
 <a id="ref-chernozhukov"></a>**[5]** Chernozhukov, V., Fernández-Val, I. and Galichon, A. (2010). *Quantile and Probability Curves Without Crossing*. Econometrica, Vol. 78, No. 3. [Link](http://alfredgalichon.com/wp-content/uploads/2012/10/Econometrica_article_may-2010.pdf).
 
-<a id="ref-538"></a>**[6]** Silver, N. and Fischer-Baum, R. *How We Calculate NBA Elo Ratings*. FiveThirtyEight methodology post (2015): source for the MoV exponent convention used here. [Link](https://fivethirtyeight.com/features/how-we-calculate-nba-elo-ratings/).
+<a id="ref-538"></a>**[6]** Silver, N. and Fischer-Baum, R. *How We Calculate NBA Elo Ratings*. FiveThirtyEight methodology post (2015), source for the MoV exponent convention used here. [Link](https://fivethirtyeight.com/features/how-we-calculate-nba-elo-ratings/).
 
 <a id="ref-markowitz"></a>**[7]** Markowitz, H. (1952). *Portfolio Selection*. Journal of Finance, Vol. 7, No. 1. [Link](http://efinance.org.cn/cn/fm/Portfolio%20Selection.pdf). Motivates the $\mu - \nu \sigma^2$ structure of the squad objective.
 
 <a id="ref-rhc"></a>**[8]** Mayne, D.Q., Rawlings, J.B., Rao, C.V. and Scokaert, P.O.M. (2000). *Constrained Model Predictive Control: Stability and Optimality*. Automatica, Vol. 36, Issue 6. [Link](https://www.researchgate.net/profile/Saeed-Rahmati-2/post/Dual-mode-versus-Min-MaxLMI-Based-MPC/attachment/5bf0f01d3843b00675457f08/AS%3A694179780890625%401542516765597/download/constrained+model+predictive+control+stability+and+optimality+%28automatica2000%29.pdf). Canonical reference for Receding Horizon Control.
 
-<a id="ref-elo"></a>**[9]** Elo, A.E. (1978). *The Rating of Chessplayers, Past and Present*. Arco Publishing. [Link](https://gwern.net/doc/statistics/order/comparison/1978-elo-theratingofchessplayerspastandpresent.pdf). Original Elo rating system: formulas in §2.1 derive directly from this.
+<a id="ref-elo"></a>**[9]** Elo, A.E. (1978). *The Rating of Chessplayers, Past and Present*. Arco Publishing. [Link](https://gwern.net/doc/statistics/order/comparison/1978-elo-theratingofchessplayerspastandpresent.pdf). The formulas in §2.1 derive directly from this.
 
 <a id="ref-pulp"></a>**[10]** Mitchell, S., O'Sullivan, M. and Dunning, I. (2011). *PuLP: A Linear Programming Toolkit for Python*. University of Auckland tech report. The CBC solver bundled with PuLP is from the COIN-OR project. [Link](https://github.com/coin-or/Cbc).
 
