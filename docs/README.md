@@ -53,11 +53,17 @@ Team strengths are replayed chronologically over all finished fixtures using a s
 
 $$E_h = \frac{1}{1 + 10^{-(R_h + \text{HFA} - R_a)/400}}$$
 
-$$S_h = \begin{cases} 1 & \text{if } g_h > g_a \\ 0.5 & \text{if } g_h = g_a \\ 0 & \text{if } g_h < g_a \end{cases}$$
+$$
+S_h = \begin{cases}
+1   & \text{if } g_h > g_a \\
+0.5 & \text{if } g_h = g_a \\
+0   & \text{if } g_h < g_a
+\end{cases}
+$$
 
 $$R_h' = R_h + K \cdot \text{MoV} \cdot (S_h - E_h)$$
 
-$$\text{MoV} = (|g_h - g_a| + 1)^{0.4}$$
+$$\text{MoV} = (\lvert g_h - g_a \rvert + 1)^{0.4}$$
 
 The MoV exponent follows FiveThirtyEight's sports-Elo methodology [[6](#ref-538)]; it dampens the effect of blowouts while still rewarding decisive wins. For every fixture (including upcoming), we stamp the **pre-match** Elo of both sides (`elo_h_pre`, `elo_a_pre`) so it can be used as a leakage-free feature.
 
@@ -65,7 +71,7 @@ Hyperparameters: $K = 20$, $\text{HFA} = 60$, initial rating $= 1500$.
 
 ### 2.2 Rolling team and player metrics
 
-For the match model, we aggregate player histories into per-(team, GW) sums of xG, xGA, GF, and GA, and roll them forward at three windows $w \in \\{3, 5, 10\\}$, always **shifted by one GW** so training features for fixture at GW $t$ only use information available before GW $t$:
+For the match model, we aggregate player histories into per-(team, GW) sums of xG, xGA, GF, and GA, and roll them forward at three windows $w \in \{3, 5, 10\}$, always **shifted by one GW** so training features for fixture at GW $t$ only use information available before GW $t$:
 
 $$\overline{xG}_{T,t}^{(w)} = \frac{1}{w} \sum_{k=t-w}^{t-1} xG_{T,k}$$
 
@@ -89,9 +95,17 @@ Independent Poisson marginals over-predict $(0,1)$ and $(1,0)$ and under-predict
 
 $$P(X = x, Y = y) = \tau_{\lambda_h, \lambda_a}(x, y) \cdot \frac{\lambda_h^x e^{-\lambda_h}}{x!} \cdot \frac{\lambda_a^y e^{-\lambda_a}}{y!}$$
 
-$$\tau(x, y) = \begin{cases} 1 - \lambda_h \lambda_a \rho & \text{if } (x, y) = (0, 0) \\ 1 + \lambda_h \rho & \text{if } (x, y) = (0, 1) \\ 1 + \lambda_a \rho & \text{if } (x, y) = (1, 0) \\ 1 - \rho & \text{if } (x, y) = (1, 1) \\ 1 & \text{otherwise} \end{cases}$$
+$$
+\tau(x, y) = \begin{cases}
+1 - \lambda_h \lambda_a \rho & \text{if } (x, y) = (0, 0) \\
+1 + \lambda_h \rho           & \text{if } (x, y) = (0, 1) \\
+1 + \lambda_a \rho           & \text{if } (x, y) = (1, 0) \\
+1 - \rho                     & \text{if } (x, y) = (1, 1) \\
+1                            & \text{otherwise}
+\end{cases}
+$$
 
-We fix $\rho = -0.10$ (negative, as in the original paper; see note in [[2](#ref-dc)] §4). The truncated joint PMF is normalized to sum to 1 over $\\{0, \dots, 8\\}^2$.
+We fix $\rho = -0.10$ (negative, as in the original paper; see note in [[2](#ref-dc)] §4). The truncated joint PMF is normalized to sum to 1 over $\{0, \dots, 8\}^2$.
 
 ### 3.3 Clean-sheet probabilities (analytic)
 
@@ -107,9 +121,14 @@ Sanity check: holding $\lambda_h = 1.5$ fixed, increasing $\lambda_a$ from $0.5$
 
 ### 4.1 Why quantile regression
 
-FPL points per player per GW are discrete, heavy-tailed, and bimodal (zero for DNPs plus a wide distribution when playing). A single point estimate of the mean throws away information the optimizer needs, specifically: we want the **ceiling** (for Triple Captain timing), a **downside floor** (for risk budgeting), and a consistent **variance estimate** (for portfolio selection). We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \\{0.10, 0.50, 0.90\\}$, minimizing the pinball loss [[4](#ref-koenker)]:
+FPL points per player per GW are discrete, heavy-tailed, and bimodal (zero for DNPs plus a wide distribution when playing). A single point estimate of the mean throws away information the optimizer needs, specifically: we want the **ceiling** (for Triple Captain timing), a **downside floor** (for risk budgeting), and a consistent **variance estimate** (for portfolio selection). We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \{0.10, 0.50, 0.90\}$, minimizing the pinball loss [[4](#ref-koenker)]:
 
-$$\mathcal{L}_\alpha(y, \hat{y}) = \begin{cases} \alpha \cdot (y - \hat{y}) & \text{if } y \geq \hat{y} \\ (1 - \alpha) \cdot (\hat{y} - y) & \text{if } y < \hat{y} \end{cases}$$
+$$
+\mathcal{L}_\alpha(y, \hat{y}) = \begin{cases}
+\alpha \cdot (y - \hat{y})       & \text{if } y \geq \hat{y} \\
+(1 - \alpha) \cdot (\hat{y} - y) & \text{if } y < \hat{y}
+\end{cases}
+$$
 
 Target: raw FPL `total_points` per player per GW. **This subsumes every scoring rule end-to-end.** The model learns goal points, assist points, clean-sheet bonuses, the defensive-action bonus thresholds, BPS, and all negative deductions jointly from the data; there is no hand-coded scoring table.
 
@@ -128,7 +147,7 @@ For each player $i$ and upcoming GW $t$, we locate every fixture their club play
 1. **Scaled by forward-looking availability** $a_i = \text{chance of playing next round}_i / 100$, zeroed if the player's `status` is suspended, out, or unavailable. Historical availability is already captured implicitly through the lagged-minute features, so this only adds forward-looking injury information.
 2. **Aggregated across fixtures per (i, t)** by simple summation:
 
-$$\hat{q}^{(i,t)}_\alpha = \sum_{f \in F_{i,t}} a_i \cdot \hat{q}^{(i,f)}_\alpha, \qquad \alpha \in \\{0.10, 0.50, 0.90\\}$$
+$$\hat{q}^{(i,t)}_\alpha = \sum_{f \in F_{i,t}} a_i \cdot \hat{q}^{(i,f)}_\alpha, \qquad \alpha \in \{0.10, 0.50, 0.90\}$$
 
 A blank GW yields $F_{i,t} = \emptyset$ and therefore $\hat{q}^{(i,t)}_\alpha = 0$; a double GW stacks both fixtures additively.
 
@@ -146,7 +165,7 @@ This is lighter than a full Monte-Carlo covariance estimate (which can't be cons
 
 ### 5.1 Decision variables
 
-Per player $i \in \\{1, \dots, N\\}$ and GW $t \in \\{t_0, \dots, t_0 + H - 1\\}$ (horizon $H = 5$):
+Per player $i \in \{1, \dots, N\}$ and GW $t \in \{t_0, \dots, t_0 + H - 1\}$ (horizon $H = 5$):
 
 | Variable | Domain | Meaning |
 |---|---|---|
@@ -238,7 +257,7 @@ $$t^{\star} \;=\; \arg\max_{t} \; \sum_{i \in \text{bench}} \hat{q}^{(i,t)}_{50}
 
 **Free Hit**: pick the GW with the most teams blanking (i.e. not playing that week):
 
-$$t^{\star} \;=\; \arg\max_{t} \; \bigl| \\{ k : k \text{ blanks at } t \\} \bigr|$$
+$$t^{\star} \;=\; \arg\max_{t} \; \bigl| \{ k : k \text{ blanks at } t \} \bigr|$$
 
 **Wildcard**: trigger if the RHC proposes at least 4 transfers IN or at least 2 hits, since the MILP's willingness to pay hits is a proxy signal that the current squad is far from optimal.
 
