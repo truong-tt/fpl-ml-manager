@@ -28,10 +28,13 @@ def train_points_models() -> None:
     X = train[points_feature_cols()].astype(float).fillna(0.0)
     y = train["target"].astype(float)
     for q in QUANTILES:
+        # Conservative regularization: single-season data is noisy, so we force
+        # shallower trees and larger leaves than defaults.
         params = dict(objective="reg:quantileerror", quantile_alpha=q,
-                      learning_rate=0.05, max_depth=5, subsample=0.8,
-                      colsample_bytree=0.8, min_child_weight=5, verbosity=0)
-        m = xgb.train(params, xgb.DMatrix(X, label=y), num_boost_round=400)
+                      learning_rate=0.03, max_depth=4, subsample=0.8,
+                      colsample_bytree=0.8, min_child_weight=20,
+                      reg_alpha=0.1, reg_lambda=1.0, verbosity=0)
+        m = xgb.train(params, xgb.DMatrix(X, label=y), num_boost_round=600)
         m.save_model(DATA_DIR / MODEL_FILES[q])
 
 

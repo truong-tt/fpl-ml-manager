@@ -105,6 +105,10 @@ def build_player_features(
     ]].rename(columns={"id": "player_id", "element_type": "pos_id", "team": "team_id"})
     df = df.merge(meta, on="player_id", how="left")
     df["pos_id"] = df["pos_id"].fillna(3).astype(int)
+    # One-hot position: XGBoost treating pos_id as ordinal conflates GK<->FWD
+    # in weird ways because their scoring distributions differ structurally.
+    for p in (1, 2, 3, 4):
+        df[f"pos_{p}"] = (df["pos_id"] == p).astype(int)
     df["is_pen_taker"] = (df["penalties_order"].fillna(0) == 1).astype(int)
     df["is_fk_taker"] = (df["direct_freekicks_order"].fillna(0) == 1).astype(int)
 
@@ -124,7 +128,8 @@ def build_player_features(
 
 def points_feature_cols() -> list[str]:
     """Canonical feature-column order for the quantile points model."""
-    base = ["pos_id", "is_home", "is_pen_taker", "is_fk_taker",
+    base = ["pos_1", "pos_2", "pos_3", "pos_4",
+            "is_home", "is_pen_taker", "is_fk_taker",
             "lag1_min", "lag2_min", "lag3_min",
             "opp_xg_5", "opp_xga_5", "opp_elo", "own_elo", "elo_gap"]
     for w in (5, 10):
