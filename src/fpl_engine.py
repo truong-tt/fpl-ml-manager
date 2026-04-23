@@ -54,12 +54,14 @@ class FPLEngine:
                     if pid not in latest.index:
                         continue
                     r = latest.loc[pid].to_dict()
+                    pos = int(p["element_type"])
                     r.update({
                         "is_home": home,
                         "opp_xg_5": float(fx[opp_xg]), "opp_xga_5": float(fx[opp_xga]),
                         "opp_elo": float(fx[opp_elo]), "own_elo": float(fx[own_elo]),
                         "elo_gap": float(fx[own_elo]) - float(fx[opp_elo]),
-                        "pos_id": int(p["element_type"]),
+                        "pos_1": int(pos == 1), "pos_2": int(pos == 2),
+                        "pos_3": int(pos == 3), "pos_4": int(pos == 4),
                         "is_pen_taker": int(p.get("penalties_order", 0) == 1),
                         "is_fk_taker": int(p.get("direct_freekicks_order", 0) == 1),
                         "player_id": pid, "fixture_gw": int(fx["event"]),
@@ -76,19 +78,28 @@ class FPLEngine:
             return pd.DataFrame()
 
         rows = rows.join(predict_quantiles(self.points_models, rows[points_feature_cols()]))
-
+    
         pmeta = self.players.set_index("id")
         chance = (pd.to_numeric(pmeta["chance_of_playing_next_round"],
                                 errors="coerce").fillna(100.0) / 100.0).to_dict()
         bad = pmeta["status"].isin(["s", "n", "u"]).to_dict()
-        rows["chance"] = rows["player_id"].map(chance).fillna(1.0)
+        # chance_of_playing_next_round only describes the IMMEDIATE next GW.
+        # Applying it across the horizon double-counts injuries for weeks the
+        # player will likely have recovered. Hard-bad statuses ('s' suspended,
+        # 'n' not available, 'u' unavailable) zero all GWs.
+        next_gw = rows["fixture_gw"].min()
+        rows["chance"] = 1.0
+        is_next = rows["fixture_gw"] == next_gw
+        rows.loc[is_next, "chance"] = rows.loc[is_next, "player_id"].map(chance).fillna(1.0)
         rows.loc[rows["player_id"].map(bad).fillna(False), "chance"] = 0.0
         for c in ("q10", "q50", "q90"):
             rows[c] = rows[c] * rows["chance"]
 
         agg = rows.groupby(["player_id", "fixture_gw"], as_index=False).agg(
             q10=("q10", "sum"), q50=("q50", "sum"), q90=("q90", "sum"))
-        agg["variance"] = ((agg["q90"] - agg["q10"]) / 2.56) ** 2
+        # Use std (not variance) so penalty scales linearly with ceiling, not
+        # quadratically - prevents the solver from dodging high-ceiling players.
+        agg["variance"] = (agg["q90"] - agg["q10"]) / 2.56
 
         xp = agg.pivot(index="player_id", columns="fixture_gw", values="q50").fillna(0.0)
         xp.columns = [f"xp_{int(c)}" for c in xp.columns]

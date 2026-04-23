@@ -18,7 +18,9 @@ OUT_DIR = DATA_DIR / "processed"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 HORIZON = 5
-LAMBDA_VAR, LAMBDA_EO, BENCH_WEIGHT = 0.02, 0.0, 0.15
+# With linear-std variance penalty (was variance^2), 0.05 is an equivalent
+# scale. Set to 0.0 if the solver still under-invests in premiums.
+LAMBDA_VAR, LAMBDA_EO, BENCH_WEIGHT = 0.05, 0.0, 0.15
 POS = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
 
 
