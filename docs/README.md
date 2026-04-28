@@ -77,7 +77,7 @@ $$
 
 $$R_h' = R_h + K \cdot \text{MoV} \cdot (S_h - E_h), \qquad \text{MoV} = (\lvert g_h - g_a \rvert + 1)^{0.4}$$
 
-The MoV exponent follows FiveThirtyEight's sports-Elo methodology — see [How We Calculate NBA Elo Ratings][ref-538]. It dampens the effect of blowouts while still rewarding decisive wins. The football adaptation of Elo (validated against bookmaker odds) follows [Using ELO ratings for match result prediction in association football][ref-hvattum]. For every fixture (including upcoming), we stamp the **pre-match** Elo of both sides (`elo_h_pre`, `elo_a_pre`) so it can be used as a leakage-free feature.
+The MoV-multiplier idea is inspired by FiveThirtyEight's sports-Elo methodology — see [How We Calculate NBA Elo Ratings][ref-538] for the canonical writeup; our specific exponent of $0.4$ differs from 538's NBA formula but is in the same family and dampens the effect of blowouts while still rewarding decisive wins. Adapting Elo from chess to football match prediction is well-studied — see [Using ELO ratings for match result prediction in association football][ref-hvattum] for a validation against bookmaker odds. The hyperparameters in the table below follow community sports-Elo conventions (ClubElo / 538-style) rather than any single paper's exact tuning. For every fixture (including upcoming), we stamp the **pre-match** Elo of both sides (`elo_h_pre`, `elo_a_pre`) so it can be used as a leakage-free feature.
 
 | Hyperparameter | Value |
 |---|---|
@@ -149,7 +149,7 @@ FPL points per player per GW are discrete, heavy-tailed, and bimodal (zero for d
 | q50 (median EV) | Primary objective μ — robust to heavy right tail |
 | q90 (ceiling) | Triple Captain timing, variance estimate |
 
-We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \{0.10, 0.50, 0.90\}$, minimizing pinball loss. The tree-ensemble extension of quantile regression — and the practical motivation for using boosted trees here rather than a single linear quantile fit — is laid out in [Quantile Regression Forests][ref-meinshausen]:
+We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \{0.10, 0.50, 0.90\}$, minimizing pinball loss directly:
 
 $$
 \mathcal{L}_\alpha(y, \hat{y}) = \begin{cases}
@@ -159,6 +159,8 @@ $$
 $$
 
 Target: raw FPL `total_points` per player per GW. **This subsumes every scoring rule end-to-end.** The model learns goal points, assist points, clean-sheet bonuses, defensive-action bonus thresholds, BPS, and all negative deductions jointly from the data; there is no hand-coded scoring table.
+
+The use of tree ensembles for quantile prediction here is inspired by [Quantile Regression Forests][ref-meinshausen]; XGBoost's `reg:quantileerror` differs mechanically — it minimizes pinball loss directly rather than reading quantiles off empirical leaf distributions — but the motivation for using ensembles over a single linear quantile fit is the same.
 
 ### 4.2 Post-hoc non-crossing
 
@@ -361,7 +363,7 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 **Boosting and quantile regression**
 
 - [XGBoost: A Scalable Tree Boosting System][ref-xgboost] — Chen & Guestrin, *KDD* 2016. Backbone for both the Poisson goal model and the three quantile point models.
-- [Quantile Regression Forests][ref-meinshausen] — Meinshausen, *JMLR* 2006. Practical foundation for tree-ensemble quantile regression — the conceptual bridge from classical quantile regression to the XGBoost q10/q50/q90 boosters used here.
+- [Quantile Regression Forests][ref-meinshausen] — Meinshausen, *JMLR* 2006. Inspired the use of tree ensembles for quantile prediction; the XGBoost objective used here differs mechanically (direct pinball-loss minimization rather than QRF's empirical leaf distributions) but is in the same spirit.
 - [Quantile and Probability Curves Without Crossing][ref-chernozhukov] — Chernozhukov, Fernández-Val & Galichon, *Econometrica* 2010. Principled non-crossing alternative to the row-sort heuristic used here.
 
 **Football scoring models**
@@ -371,8 +373,8 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 
 **Ratings**
 
-- [Using ELO ratings for match result prediction in association football][ref-hvattum] — Hvattum & Arntzen, *International Journal of Forecasting* 2010. Adapts Elo from chess to football and validates against bookmaker odds; source of the football-specific tuning conventions in §2.1.
-- [How We Calculate NBA Elo Ratings][ref-538] — Silver & Fischer-Baum, FiveThirtyEight 2015. Source of the MoV exponent convention.
+- [Using ELO ratings for match result prediction in association football][ref-hvattum] — Hvattum & Arntzen, *International Journal of Forecasting* 2010. Adapts Elo from chess to football and validates against bookmaker odds; representative of the broader football-Elo literature §2.1 draws on (the specific K / HFA / MoV-exponent values used here are community sports-Elo conventions, not this paper's exact tuning).
+- [How We Calculate NBA Elo Ratings][ref-538] — Silver & Fischer-Baum, FiveThirtyEight 2015. Inspired the margin-of-victory multiplier idea used here; our specific exponent of $0.4$ is in the same family but differs from 538's NBA formula.
 
 **Optimization**
 
