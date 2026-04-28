@@ -149,7 +149,7 @@ FPL points per player per GW are discrete, heavy-tailed, and bimodal (zero for d
 | q50 (median EV) | Primary objective μ — robust to heavy right tail |
 | q90 (ceiling) | Triple Captain timing, variance estimate |
 
-We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \{0.10, 0.50, 0.90\}$, minimizing pinball loss directly:
+We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \{0.10, 0.50, 0.90\}$, which directly minimizes the pinball loss from [Regression Quantiles][ref-koenker]:
 
 $$
 \mathcal{L}_\alpha(y, \hat{y}) = \begin{cases}
@@ -159,8 +159,6 @@ $$
 $$
 
 Target: raw FPL `total_points` per player per GW. **This subsumes every scoring rule end-to-end.** The model learns goal points, assist points, clean-sheet bonuses, defensive-action bonus thresholds, BPS, and all negative deductions jointly from the data; there is no hand-coded scoring table.
-
-The use of tree ensembles for quantile prediction here is inspired by [Quantile Regression Forests][ref-meinshausen]; XGBoost's `reg:quantileerror` differs mechanically — it minimizes pinball loss directly rather than reading quantiles off empirical leaf distributions — but the motivation for using ensembles over a single linear quantile fit is the same.
 
 ### 4.2 Post-hoc non-crossing
 
@@ -363,7 +361,7 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 **Boosting and quantile regression**
 
 - [XGBoost: A Scalable Tree Boosting System][ref-xgboost] — Chen & Guestrin, *KDD* 2016. Backbone for both the Poisson goal model and the three quantile point models.
-- [Quantile Regression Forests][ref-meinshausen] — Meinshausen, *JMLR* 2006. Inspired the use of tree ensembles for quantile prediction; the XGBoost objective used here differs mechanically (direct pinball-loss minimization rather than QRF's empirical leaf distributions) but is in the same spirit.
+- [Regression Quantiles][ref-koenker] — Koenker & Bassett, *Econometrica* 1978. Origin of the pinball / check loss that XGBoost's `reg:quantileerror` objective minimizes for the q10 / q50 / q90 boosters.
 - [Quantile and Probability Curves Without Crossing][ref-chernozhukov] — Chernozhukov, Fernández-Val & Galichon, *Econometrica* 2010. Principled non-crossing alternative to the row-sort heuristic used here.
 
 **Football scoring models**
@@ -389,7 +387,7 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 [ref-xgboost]: https://arxiv.org/abs/1603.02754
 [ref-dc]: https://www.ajbuckeconbikesail.net/wkpapers/Airports/MVPoisson/soccer_betting.pdf
 [ref-baio]: https://doi.org/10.1080/02664760802684177
-[ref-meinshausen]: https://jmlr.org/papers/v7/meinshausen06a.html
+[ref-koenker]: https://people.eecs.berkeley.edu/~jordan/sail/readings/koenker-bassett.pdf
 [ref-chernozhukov]: http://alfredgalichon.com/wp-content/uploads/2012/10/Econometrica_article_may-2010.pdf
 [ref-538]: https://fivethirtyeight.com/features/how-we-calculate-nba-elo-ratings/
 [ref-hvz]: https://arxiv.org/abs/1604.01455
