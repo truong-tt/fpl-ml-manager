@@ -1,51 +1,65 @@
 # Autonomous Fantasy Premier League ML Manager
 
-![Python](https://img.shields.io/badge/Python-3.11-blue.svg)
-![XGBoost](https://img.shields.io/badge/XGBoost-quantile_%2B_poisson-green.svg)
-![PuLP](https://img.shields.io/badge/PuLP-MILP%20%2B%20RHC-yellow.svg)
+[![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
+[![XGBoost](https://img.shields.io/badge/XGBoost-quantile_%2B_poisson-green.svg)](https://xgboost.readthedocs.io/)
+[![PuLP](https://img.shields.io/badge/PuLP-MILP%20%2B%20RHC-yellow.svg)](https://coin-or.github.io/pulp/)
+[![Schedule](https://img.shields.io/badge/GitHub_Actions-weekly-lightgrey.svg)](../.github/workflows/weekly_update.yml)
 
-A data-driven agent that picks and manages a 15-player FPL squad end-to-end. The pipeline learns per-player point distributions with quantile-regression gradient boosting, estimates match-level goal rates with a Dixon-Coles-corrected Poisson model, and then solves a single joint MILP for the 15-man squad, the starting XI, and the captain across a rolling horizon.
+A data-driven agent that picks and manages a 15-player Fantasy Premier League squad end-to-end. Each week the pipeline learns per-player point distributions with quantile-regression gradient boosting, estimates match-level goal rates with a Dixon–Coles-corrected Poisson model, and solves a single joint MILP for the 15-man squad, the starting XI, and the captain across a rolling horizon — then schedules chips on top.
 
-> New to FPL scoring rules and constraints? Start with the [FPL 101 primer](FPL_101.md), where the math assumes you understand clean sheets, appearance points, and the transfer/chip system.
+> **New to FPL?** Start with the [FPL 101 primer](FPL_101.md). The math below assumes you understand clean sheets, appearance points, the bench-order auto-sub rule, and the transfer/chip system.
+
+> **Scope disclaimer:** Research project for personal use. Past performance of the underlying models does not guarantee future FPL rank — the league is noisy and partly luck-driven by design.
+
+---
+
+## Table of Contents
+
+1. [System Architecture](#1-system-architecture)
+2. [Feature Engineering](#2-feature-engineering)
+3. [Match Model](#3-match-model)
+4. [Player Points Model](#4-player-points-model)
+5. [Combinatorial Optimization](#5-combinatorial-optimization)
+6. [Chip Scheduling](#6-chip-scheduling)
+7. [Repository Layout](#7-repository-layout)
+8. [Installation and Usage](#8-installation-and-usage)
+9. [Future Work](#9-future-work)
+10. [References](#10-references)
+11. [Data and Credit](#data-and-credit)
+12. [License](#license)
 
 ---
 
 ## 1. System Architecture
 
-```
-FPL API  ──►  data_loader  ──►  players.csv, teams.csv, fixtures.csv, history.csv
-                                          │
-                                          ▼
-                                     features.py
-                        Elo snapshots + rolling team/player metrics
-                                          │
-                 ┌────────────────────────┼────────────────────────┐
-                 ▼                                                 ▼
-        train_match_model                                 train_points_model
-     2 × Poisson XGBoost + DC τ                        3 × Quantile XGBoost (q10/q50/q90)
-                 │                                                 │
-                 └────────────────────────┬────────────────────────┘
-                                          ▼
-                                     fpl_engine
-                     Per-(player, GW) projection frame with xp_t and var_t
-                                          │
-                                          ▼
-                                     optimizer
-             MILP: squad × XI × captain + RHC transfer/hit accounting
-                                          │
-                                          ▼
-                                       chips
-                           Greedy TC / BB / FH / WC scheduler
-                                          │
-                                          ▼
-                                   lineup.md + snapshot
+End-to-end pipeline from the FPL public API to a weekly markdown report containing the squad, XI, captain, transfers, hits, and chip recommendations.
+
+```mermaid
+flowchart TD
+    A["Raw FPL API<br/>bootstrap-static, fixtures, element-summary"]
+    B["1. Data Loader<br/>src/data_loader.py<br/>players, teams, fixtures, history CSVs"]
+    C["2. Feature Engineering<br/>src/features.py<br/>chronological Elo + rolling team/player metrics"]
+    D["3a. Match Model<br/>src/train_match_model.py<br/>2× Poisson XGBoost + Dixon-Coles τ"]
+    E["3b. Points Model<br/>src/train_points_model.py<br/>3× Quantile XGBoost (q10 / q50 / q90)"]
+    F["4. Inference Engine<br/>src/fpl_engine.py<br/>per-(player, GW) projection frame: μ, σ²"]
+    G["5. MILP Optimizer<br/>src/optimizer.py<br/>squad × XI × captain over horizon H = 5 (RHC)"]
+    H["6. Chip Scheduler<br/>src/chips.py<br/>greedy TC / BB / FH / WC heuristics"]
+    I["lineup.md + squad_snapshot.csv"]
+    A --> B --> C
+    C --> D
+    C --> E
+    D --> F
+    E --> F
+    F --> G --> H --> I
 ```
 
-All model artifacts (Poisson boosters, quantile boosters) and intermediate CSVs are persisted to `data/` so subsequent runs only retrain when an artifact is missing.
+All model artifacts (Poisson boosters, quantile boosters) and intermediate CSVs are persisted under `data/`, so subsequent runs only retrain when an artifact is missing. The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/workflows/weekly_update.yml) re-runs the pipeline every Wednesday at 10:00 UTC.
 
 ---
 
-## 2. Feature Engineering (`src/features.py`)
+## 2. Feature Engineering
+
+Lives in [src/features.py](../src/features.py). Two feature families: team-level state for the match model, and player-level lags for the points model. Both are computed with strict GW-shifting to prevent leakage.
 
 ### 2.1 Team Elo
 
@@ -61,37 +75,41 @@ S_h = \begin{cases}
 \end{cases}
 $$
 
-$$R_h' = R_h + K \cdot \text{MoV} \cdot (S_h - E_h)$$
+$$R_h' = R_h + K \cdot \text{MoV} \cdot (S_h - E_h), \qquad \text{MoV} = (\lvert g_h - g_a \rvert + 1)^{0.4}$$
 
-$$\text{MoV} = (\lvert g_h - g_a \rvert + 1)^{0.4}$$
+The MoV exponent follows FiveThirtyEight's sports-Elo methodology — see [How We Calculate NBA Elo Ratings][ref-538]. It dampens the effect of blowouts while still rewarding decisive wins. The base Elo update derives directly from [The Rating of Chessplayers, Past and Present][ref-elo]. For every fixture (including upcoming), we stamp the **pre-match** Elo of both sides (`elo_h_pre`, `elo_a_pre`) so it can be used as a leakage-free feature.
 
-The MoV exponent follows FiveThirtyEight's sports-Elo methodology [[6](#ref-538)]; it dampens the effect of blowouts while still rewarding decisive wins. For every fixture (including upcoming), we stamp the **pre-match** Elo of both sides (`elo_h_pre`, `elo_a_pre`) so it can be used as a leakage-free feature.
-
-Hyperparameters: $K = 20$, $\text{HFA} = 60$, initial rating $= 1500$.
+| Hyperparameter | Value |
+|---|---|
+| K-factor | 20 |
+| Home-field advantage (HFA) | 60 Elo |
+| Initial rating | 1500 |
 
 ### 2.2 Rolling team and player metrics
 
-For the match model, we aggregate player histories into per-(team, GW) sums of xG, xGA, GF, and GA, and roll them forward at three windows $w \in \{3, 5, 10\}$, always **shifted by one GW** so training features for fixture at GW $t$ only use information available before GW $t$:
+For the **match** model, we aggregate player histories into per-(team, GW) sums of xG, xGA, GF, and GA, and roll them forward at three windows $w \in \{3, 5, 10\}$, always **shifted by one GW** so training features for fixture at GW $t$ only use information available before GW $t$:
 
 $$\overline{xG}_{T,t}^{(w)} = \frac{1}{w} \sum_{k=t-w}^{t-1} xG_{T,k}$$
 
-For the points model, each player row uses lagged minutes $m_{i,t-1}$, $m_{i,t-2}$, $m_{i,t-3}$ and 5- and 10-GW rolling per-player means of underlying metrics (xG, xA, xGI, BPS, ICT, saves, CBI, tackles, recoveries, pts), plus context pulled from the fixture join: `is_home`, `opp_xg_5`, `opp_xga_5`, `opp_elo`, `own_elo`, and `elo_gap`. Set-piece and penalty-taker flags come directly from the FPL API.
+For the **points** model, each player row uses lagged minutes $m_{i,t-1}$, $m_{i,t-2}$, $m_{i,t-3}$ and 5- and 10-GW rolling per-player means of underlying metrics (xG, xA, xGI, BPS, ICT, saves, CBI, tackles, recoveries, pts), plus context pulled from the fixture join: `is_home`, `opp_xg_5`, `opp_xga_5`, `opp_elo`, `own_elo`, and `elo_gap`. Set-piece and penalty-taker flags come directly from the FPL API.
 
 ---
 
-## 3. Match Model (`src/train_match_model.py`)
+## 3. Match Model
+
+Lives in [src/train_match_model.py](../src/train_match_model.py).
 
 ### 3.1 Poisson goal rates
 
-Two independent XGBoost regressors with a `count:poisson` objective model expected goals for each side [[1](#ref-xgboost)]:
+Two independent XGBoost regressors with a `count:poisson` objective model expected goals for each side, following [XGBoost: A Scalable Tree Boosting System][ref-xgboost]:
 
 $$\lambda_h = f_h(\mathbf{x}), \qquad \lambda_a = f_a(\mathbf{x})$$
 
-where $\mathbf{x}$ is the 31-dimensional match feature vector from §2. A Bayesian hierarchical Poisson (à la Maher [[3](#ref-maher)]) was rejected because the FPL API only exposes a single season of data; with around 380 finished fixtures, partial-pooling posteriors cannot out-perform a tree ensemble that captures non-linear interactions (press-intensity × block-depth, Elo-gap × home-advantage, etc.).
+where $\mathbf{x}$ is the 31-dimensional match feature vector from §2. A Bayesian hierarchical Poisson à la [Modelling Association Football Scores][ref-maher] was rejected because the FPL API only exposes a single season of data; with around 380 finished fixtures, partial-pooling posteriors cannot out-perform a tree ensemble that captures non-linear interactions (press intensity × block depth, Elo gap × home advantage, etc.).
 
-### 3.2 Dixon-Coles low-score correction
+### 3.2 Dixon–Coles low-score correction
 
-Independent Poisson marginals over-predict $(0,1)$ and $(1,0)$ and under-predict $(0,0)$ and $(1,1)$ in football [[2](#ref-dc)]. Dixon & Coles fix this with a multiplicative correction $\tau$ applied to the joint PMF on the four low-scoring corners:
+Independent Poisson marginals over-predict $(0,1)$ and $(1,0)$ and under-predict $(0,0)$ and $(1,1)$ in football. [Modelling Association Football Scores and Inefficiencies in the Football Betting Market][ref-dc] fixes this with a multiplicative correction $\tau$ applied to the joint PMF on the four low-scoring corners:
 
 $$P(X = x, Y = y) = \tau_{\lambda_h, \lambda_a}(x, y) \cdot \frac{\lambda_h^x e^{-\lambda_h}}{x!} \cdot \frac{\lambda_a^y e^{-\lambda_a}}{y!}$$
 
@@ -105,23 +123,33 @@ $$
 \end{cases}
 $$
 
-We fix $\rho = -0.10$ (negative, as in the original paper; see note in [[2](#ref-dc)] §4). The truncated joint PMF is normalized to sum to 1 over $\{0, \dots, 8\}^2$.
+We fix $\rho = -0.10$ (negative, as in the original paper). The truncated joint PMF is normalized to sum to 1 over $\{0, \dots, 8\}^2$.
 
 ### 3.3 Clean-sheet probabilities (analytic)
 
-Unlike the previous iteration which Monte-Carlo'd clean sheets and inverted the correction, here CS is computed directly from the DC joint matrix $M$:
+Clean sheets are computed directly from the Dixon–Coles joint matrix $M$ rather than via Monte Carlo:
 
 $$P(\text{home CS}) = \sum_{x=0}^{8} M_{x, 0}, \qquad P(\text{away CS}) = \sum_{y=0}^{8} M_{0, y}$$
 
-Sanity check: holding $\lambda_h = 1.5$ fixed, increasing $\lambda_a$ from $0.5$ to $2.5$ drops $P(\text{home CS})$ from $0.61$ to $0.08$. The sign is now correct.
+Sanity check: holding $\lambda_h = 1.5$ fixed, increasing $\lambda_a$ from $0.5$ to $2.5$ drops $P(\text{home CS})$ from $0.61$ to $0.08$. The sign is correct and the response curve is monotone.
 
 ---
 
-## 4. Player Points Model (`src/train_points_model.py`)
+## 4. Player Points Model
+
+Lives in [src/train_points_model.py](../src/train_points_model.py).
 
 ### 4.1 Why quantile regression
 
-FPL points per player per GW are discrete, heavy-tailed, and bimodal (zero for DNPs plus a wide distribution when playing). A single point estimate of the mean throws away information the optimizer needs, specifically: we want the **ceiling** (for Triple Captain timing), a **downside floor** (for risk budgeting), and a consistent **variance estimate** (for portfolio selection). We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \{0.10, 0.50, 0.90\}$, minimizing the pinball loss [[4](#ref-koenker)]:
+FPL points per player per GW are discrete, heavy-tailed, and bimodal (zero for did-not-plays plus a wide distribution when playing). A single point estimate of the mean throws away information the optimizer needs:
+
+| Quantile | Use in optimizer |
+|---|---|
+| q10 (downside floor) | Risk budgeting, variance estimate |
+| q50 (median EV) | Primary objective μ — robust to heavy right tail |
+| q90 (ceiling) | Triple Captain timing, variance estimate |
+
+We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \{0.10, 0.50, 0.90\}$, minimizing the pinball loss from [Regression Quantiles][ref-koenker]:
 
 $$
 \mathcal{L}_\alpha(y, \hat{y}) = \begin{cases}
@@ -130,15 +158,15 @@ $$
 \end{cases}
 $$
 
-Target: raw FPL `total_points` per player per GW. **This subsumes every scoring rule end-to-end.** The model learns goal points, assist points, clean-sheet bonuses, the defensive-action bonus thresholds, BPS, and all negative deductions jointly from the data; there is no hand-coded scoring table.
+Target: raw FPL `total_points` per player per GW. **This subsumes every scoring rule end-to-end.** The model learns goal points, assist points, clean-sheet bonuses, defensive-action bonus thresholds, BPS, and all negative deductions jointly from the data; there is no hand-coded scoring table.
 
 ### 4.2 Post-hoc non-crossing
 
-Independently fit quantile regressors can cross, meaning the predicted 10th percentile can end up greater than the predicted 50th percentile for some rows, which is nonsensical. We enforce monotonicity row-wise by sorting the three predictions ascending at inference:
+Independently fit quantile regressors can cross — the predicted 10th percentile may end up greater than the predicted 50th — which is nonsensical. We enforce monotonicity row-wise by sorting predictions ascending at inference:
 
 $$[\hat{q}_{10},\; \hat{q}_{50},\; \hat{q}_{90}] \;\leftarrow\; \text{sort}\bigl([\hat{q}_{10},\; \hat{q}_{50},\; \hat{q}_{90}]\bigr)$$
 
-Simple and arguably less principled than constrained optimization [[5](#ref-chernozhukov)], but empirically affects under 2% of rows in our data.
+Simple, and arguably less principled than constrained optimization à la [Quantile and Probability Curves Without Crossing][ref-chernozhukov], but empirically affects under 2% of rows in our data — not worth the implementation cost for now.
 
 ### 4.3 Inference: handling DGWs, BGWs, and injuries
 
@@ -153,19 +181,21 @@ A blank GW yields $F_{i,t} = \emptyset$ and therefore $\hat{q}^{(i,t)}_\alpha = 
 
 ### 4.4 Variance estimate from quantile spread
 
-The optimizer's risk term needs a scalar variance per $(i, t)$. Assuming the points distribution is approximately Gaussian in the central mass (a coarse but serviceable approximation for players expected to play), the interval from the 10th to the 90th percentile spans about 2.56 standard deviations (formally, $\Phi^{-1}(0.9) - \Phi^{-1}(0.1) \approx 2.56$):
+The optimizer's risk term needs a scalar variance per $(i, t)$. Assuming the points distribution is approximately Gaussian in the central mass (a coarse but serviceable approximation for players expected to play), the interval from q10 to q90 spans about 2.56 standard deviations (formally, $\Phi^{-1}(0.9) - \Phi^{-1}(0.1) \approx 2.56$):
 
 $$\hat{\sigma}^2_{i,t} \approx \left( \frac{\hat{q}^{(i,t)}_{90} - \hat{q}^{(i,t)}_{10}}{2.56} \right)^2$$
 
-This is lighter than a full Monte-Carlo covariance estimate (which can't be consumed by the linear CBC MILP solver anyway) but preserves the core signal; players with wide quantile spreads are penalized more heavily in the squad objective.
+This is lighter than a full Monte-Carlo covariance estimate (which the linear CBC solver could not consume anyway) but preserves the core signal: players with wide quantile spreads are penalized more heavily in the squad objective.
 
 ---
 
-## 5. Combinatorial Optimization (`src/optimizer.py`)
+## 5. Combinatorial Optimization
+
+Lives in [src/optimizer.py](../src/optimizer.py). Solved with PuLP — see [PuLP: A Linear Programming Toolkit for Python][ref-pulp] — using the bundled COIN-OR CBC solver.
 
 ### 5.1 Decision variables
 
-Per player $i \in \{1, \dots, N\}$ and GW $t \in \{t_0, \dots, t_0 + H - 1\}$ (horizon $H = 5$):
+Per player $i \in \{1, \dots, N\}$ and GW $t \in \{t_0, \dots, t_0 + H - 1\}$, with horizon $H = 5$:
 
 | Variable | Domain | Meaning |
 |---|---|---|
@@ -183,45 +213,43 @@ For the cold-start solve, $x_{i,t}$ collapses to a single $x_i$ (no transfers ye
 
 $$\max \sum_{t=t_0}^{t_0 + H - 1} \sum_{i=1}^{N} \Bigl[\, \mu_{i,t}\, s_{i,t} \;+\; b \cdot \mu_{i,t}\, (x_{i,t} - s_{i,t}) \;+\; \mu_{i,t}\, c_{i,t} \;-\; \nu\, \hat{\sigma}^2_{i,t}\, x_{i,t} \;+\; \eta\, \mu_{i,t}\, (1 - \text{EO}_i)\, x_{i,t} \,\Bigr] \;-\; \sum_{t} 4\, h_t$$
 
-Term by term: starter XP, bench auto-sub EV, captain double, risk penalty, differential tilt, and hit cost.
+| Term | Role |
+|---|---|
+| $\mu_{i,t}\, s_{i,t}$ | Starter expected points |
+| $b \cdot \mu_{i,t}\, (x_{i,t} - s_{i,t})$ | Bench auto-sub EV ($b = 0.15$) |
+| $\mu_{i,t}\, c_{i,t}$ | Captain double (added on top of starter term) |
+| $-\nu\, \hat{\sigma}^2_{i,t}\, x_{i,t}$ | Risk penalty (diagonal Markowitz) |
+| $\eta\, \mu_{i,t}\, (1 - \text{EO}_i)\, x_{i,t}$ | Differential / EO tilt (zero by default) |
+| $-4\, h_t$ | Hit cost |
 
 Design notes:
 
-- $\mu_{i,t} = \hat{q}^{(i,t)}_{50}$ is the median EV, which is more robust to the heavy right tail than the mean for this objective.
-- The captain term adds $\mu_{i,t}$ on top of the starter term, which already counts $\mu_{i,t}$ once, summing to the correct doubling. Triple Captain is handled separately in the chip module (§6).
-- Bench weight $b = 0.15$ is an empirical estimate of auto-sub realization, roughly $P(\text{bench player auto-subbed in})$ multiplied by the average fraction of starter's points retained.
-- **EO tilt** $\eta \cdot \mu \cdot (1 - \text{EO})$ is zero by default, which targets pure points EV. Setting $\eta > 0$ late in the season pushes the MILP toward differentials (high EV, low ownership) to maximize rank-EV rather than points-EV. This is a linearization of the classic "rank chase" objective; Markowitz-style portfolio theory [[7](#ref-markowitz)] motivates the $\mu - \nu \sigma^2$ structure of the baseline term.
-- The quadratic portfolio variance $x^\top \Sigma x$ would require MIQP; since CBC is LP-only, we take the diagonal approximation. Within-team correlation is bounded by the 3-per-club constraint and implicit in learned $\hat{\sigma}^2_{i,t}$ values anyway.
+- $\mu_{i,t} = \hat{q}^{(i,t)}_{50}$ is the median EV, more robust to the heavy right tail than the mean.
+- The bench weight $b = 0.15$ is an empirical estimate of auto-sub realization, roughly $P(\text{bench player auto-subbed in})$ multiplied by the average fraction of starter points retained.
+- **EO tilt** $\eta \cdot \mu \cdot (1 - \text{EO})$ defaults to zero, which targets pure points EV. Setting $\eta > 0$ late in the season pushes the solver toward differentials (high EV, low ownership) to maximize rank-EV. The $\mu - \nu \sigma^2$ baseline structure is motivated by [Portfolio Selection][ref-markowitz].
+- A full quadratic portfolio variance $x^\top \Sigma x$ would require MIQP; CBC is LP-only, so we take the diagonal approximation. Within-team correlation is bounded by the 3-per-club constraint and partly absorbed into learned $\hat{\sigma}^2_{i,t}$ values.
 
 ### 5.3 Structural constraints (applied at every $t$)
 
 Squad size and positional quotas: 2 GK, 5 DEF, 5 MID, 3 FWD, totaling 15:
 
-$$\sum_i x_{i,t} = 15$$
+$$\sum_i x_{i,t} = 15, \qquad \sum_{i\,:\,\text{pos}(i) = p} x_{i,t} = q_p$$
 
-$$\sum_{i\,:\,\text{pos}(i) = p} x_{i,t} = q_p, \qquad q_1 = 2,\; q_2 = 5,\; q_3 = 5,\; q_4 = 3$$
+with $q_1 = 2$, $q_2 = 5$, $q_3 = 5$, $q_4 = 3$. Club cap of 3 players per Premier League club, and a budget cap:
 
-Club cap of 3 players per Premier League club, and a budget cap:
+$$\sum_{i\,:\,\text{club}(i) = k} x_{i,t} \leq 3 \quad \forall k, \qquad \sum_i p_i\, x_{i,t} \leq B_t$$
 
-$$\sum_{i\,:\,\text{club}(i) = k} x_{i,t} \leq 3 \quad \forall k$$
-
-$$\sum_i p_i\, x_{i,t} \leq B_t$$
-
-where $B_t$ equals the previous squad value plus uninvested bank.
-
-Starting XI and captain:
+where $B_t$ equals the previous squad value plus uninvested bank. Starting XI and captain:
 
 $$\sum_i s_{i,t} = 11, \qquad \sum_i c_{i,t} = 1, \qquad c_{i,t} \leq s_{i,t} \leq x_{i,t}$$
 
-Formation minima: exactly 1 GK starts, at least 3 DEF, at least 2 MID, at least 1 FWD:
+Formation minima — exactly 1 GK starts, at least 3 DEF, at least 2 MID, at least 1 FWD:
 
-$$\sum_{i\,:\,\text{pos}(i) = 1} s_{i,t} = 1$$
+$$\sum_{i\,:\,\text{pos}(i) = 1} s_{i,t} = 1, \qquad \sum_{i\,:\,\text{pos}(i) = p} s_{i,t} \geq r_p$$
 
-$$\sum_{i\,:\,\text{pos}(i) = p} s_{i,t} \geq r_p, \qquad r_1 = 1,\; r_2 = 3,\; r_3 = 2,\; r_4 = 1$$
+with $r_1 = 1$, $r_2 = 3$, $r_3 = 2$, $r_4 = 1$. The $c_{i,t} \leq s_{i,t}$ link guarantees the captain cannot be on the bench.
 
-The $c_{i,t} \leq s_{i,t}$ constraint closes the captain-on-the-bench bug present in the previous iteration; the captain is now guaranteed to start.
-
-### 5.4 Transfer accounting (RHC only)
+### 5.4 Transfer accounting
 
 Transfer indicator for player $i$ at GW $t$:
 
@@ -231,39 +259,32 @@ with $x_{i, t_0 - 1} = 1$ if player $i$ was in the prior squad, else $0$. Free-t
 
 $$\text{ft}_{t_0} = \text{ft}^{\text{init}}, \qquad \text{ft}_t = 1 + \text{sv}_{t-1} \text{ for } t > t_0$$
 
-Transfer budget at each GW: total transfers in equals free transfers used plus hits:
+Transfer budget at each GW — total transfers in equals free transfers used plus hits:
 
 $$\sum_i \text{tin}_{i,t} = (\text{ft}_t - \text{sv}_t) + h_t, \qquad h_t \geq 0$$
 
-Combined with the $-4 h_t$ term in the objective, the solver only commits a hit when expected gain strictly exceeds 4 points.
+Combined with the $-4 h_t$ term in the objective, the solver only commits a hit when the expected gain strictly exceeds 4 points.
 
 ### 5.5 Receding Horizon Control
 
-The full multi-period MILP is solved with $H = 5$ look-ahead each week, but only the decisions for $t_0$ (the next GW) are executed: `transfers_in`, `transfers_out`, `xi_ids`, `captain`, `vice`, `hits`. The following week's run re-solves from the updated state (squad, bank, free transfers). This is a standard Receding Horizon Control (model-predictive control) formulation [[8](#ref-rhc)], which balances long-horizon optimality against the wrongness of far-future EV predictions.
+The full multi-period MILP is solved with $H = 5$ look-ahead each week, but only the decisions for $t_0$ (the next GW) are executed: `transfers_in`, `transfers_out`, `xi_ids`, `captain`, `vice`, `hits`. The following week's run re-solves from the updated state (squad, bank, free transfers). This is the standard MPC formulation from [Constrained Model Predictive Control: Stability and Optimality][ref-rhc], which balances long-horizon optimality against the wrongness of far-future EV predictions.
 
 ---
 
-## 6. Chip Scheduling (`src/chips.py`)
+## 6. Chip Scheduling
 
-Chip activation is a convex function of fixture quality that the weekly MILP does not see directly, so it's handled as a greedy post-processing heuristic over the same projection frame.
+Lives in [src/chips.py](../src/chips.py). Chip activation is a convex function of fixture quality that the weekly MILP does not see directly, so it is handled as a greedy post-processing heuristic over the same projection frame.
 
-**Triple Captain**: pick the GW and owned player maximizing single-GW median EV:
-
-$$t^{\star},\; i^{\star} \;=\; \arg\max_{t,\; i \in \text{squad}} \; \hat{q}^{(i,t)}_{50}$$
-
-**Bench Boost**: pick the GW with the highest total bench EV:
-
-$$t^{\star} \;=\; \arg\max_{t} \; \sum_{i \in \text{bench}} \hat{q}^{(i,t)}_{50}$$
-
-**Free Hit**: pick the GW with the most teams blanking (i.e. not playing that week):
-
-$$t^{\star} \;=\; \arg\max_{t} \; \bigl| \{ k : k \text{ blanks at } t \} \bigr|$$
-
-**Wildcard**: trigger if the RHC proposes at least 4 transfers IN or at least 2 hits, since the MILP's willingness to pay hits is a proxy signal that the current squad is far from optimal.
+| Chip | Heuristic |
+|---|---|
+| **Triple Captain** | Pick the GW and owned player maximizing single-GW median EV: $t^{\star},\, i^{\star} = \arg\max_{t,\, i \in \text{squad}}\, \hat{q}^{(i,t)}_{50}$ |
+| **Bench Boost** | Pick the GW with the highest total bench EV: $t^{\star} = \arg\max_{t}\, \sum_{i \in \text{bench}} \hat{q}^{(i,t)}_{50}$ |
+| **Free Hit** | Pick the GW with the most teams blanking: $t^{\star} = \arg\max_{t}\, \lvert \{ k : k \text{ blanks at } t \} \rvert$ |
+| **Wildcard** | Trigger if the RHC proposes ≥ 4 transfers IN or ≥ 2 hits — the MILP's willingness to pay hits is a proxy signal that the current squad is far from optimal. |
 
 ---
 
-## 7. Project Structure
+## 7. Repository Layout
 
 ```
 fpl-ml-manager/
@@ -281,7 +302,7 @@ fpl-ml-manager/
 │   ├── xgb_home_goals.json, xgb_away_goals.json
 │   ├── xgb_points_q10.json, xgb_points_q50.json, xgb_points_q90.json
 │   └── processed/
-│       ├── lineup.md            # Weekly markdown report
+│       ├── lineup.md            # Weekly markdown report (generated)
 │       └── squad_snapshot.csv   # Carried state for next RHC pass
 ├── docs/
 │   ├── README.md                # This file
@@ -294,48 +315,97 @@ fpl-ml-manager/
 
 ## 8. Installation and Usage
 
-Requires Python 3.11+.
+### Requirements
+
+- Python 3.11+
+- No GPU required — XGBoost CPU is fast enough for this dataset size
+
+### Local setup
 
 ```bash
+# 1. Clone
 git clone https://github.com/truong-tt/fpl-ml-manager
 cd fpl-ml-manager
+
+# 2. Create and activate a virtual environment
+python3.11 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+
+# 3. Install dependencies
 pip install -r requirements.txt
+
+# 4. Run the full pipeline
 python src/main.py
 ```
 
-First run trains every model artifact from scratch; subsequent runs reuse `data/*.json` and only retrain when a file is missing. Output is written to `data/processed/lineup.md`.
+First run trains every model artifact from scratch; subsequent runs reuse `data/*.json` and only retrain when a file is missing. Output is written to [data/processed/lineup.md](../data/processed/lineup.md). The carried squad state lives at [data/processed/squad_snapshot.csv](../data/processed/squad_snapshot.csv) and is consumed by the next week's RHC pass.
+
+### Scheduled runs
+
+The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/workflows/weekly_update.yml) runs every Wednesday at 10:00 UTC and commits the refreshed report back to the repo.
 
 ---
 
-## 9. References
-
-<a id="ref-xgboost"></a>**[1]** Chen, T. and Guestrin, C. (2016). *XGBoost: A Scalable Tree Boosting System*. Proceedings of KDD '16. [Link](https://arxiv.org/abs/1603.02754).
-
-<a id="ref-dc"></a>**[2]** Dixon, M.J. and Coles, S.G. (1997). *Modelling Association Football Scores and Inefficiencies in the Football Betting Market*. Journal of the Royal Statistical Society, Series C (Applied Statistics), Vol. 46, No. 2. [Link](https://www.ajbuckeconbikesail.net/wkpapers/Airports/MVPoisson/soccer_betting.pdf).
-
-<a id="ref-maher"></a>**[3]** Maher, M.J. (1982). *Modelling Association Football Scores*. Statistica Neerlandica, Vol. 36, Issue 3. [Link](http://www.90minut.pl/misc/maher.pdf).
-
-<a id="ref-koenker"></a>**[4]** Koenker, R. and Bassett, G. (1978). *Regression Quantiles*. Econometrica, Vol. 46, No. 1. [Link](https://people.eecs.berkeley.edu/~jordan/sail/readings/koenker-bassett.pdf).
-
-<a id="ref-chernozhukov"></a>**[5]** Chernozhukov, V., Fernández-Val, I. and Galichon, A. (2010). *Quantile and Probability Curves Without Crossing*. Econometrica, Vol. 78, No. 3. [Link](http://alfredgalichon.com/wp-content/uploads/2012/10/Econometrica_article_may-2010.pdf).
-
-<a id="ref-538"></a>**[6]** Silver, N. and Fischer-Baum, R. *How We Calculate NBA Elo Ratings*. FiveThirtyEight methodology post (2015), source for the MoV exponent convention used here. [Link](https://fivethirtyeight.com/features/how-we-calculate-nba-elo-ratings/).
-
-<a id="ref-markowitz"></a>**[7]** Markowitz, H. (1952). *Portfolio Selection*. Journal of Finance, Vol. 7, No. 1. [Link](http://efinance.org.cn/cn/fm/Portfolio%20Selection.pdf). Motivates the $\mu - \nu \sigma^2$ structure of the squad objective.
-
-<a id="ref-rhc"></a>**[8]** Mayne, D.Q., Rawlings, J.B., Rao, C.V. and Scokaert, P.O.M. (2000). *Constrained Model Predictive Control: Stability and Optimality*. Automatica, Vol. 36, Issue 6. [Link](https://www.researchgate.net/profile/Saeed-Rahmati-2/post/Dual-mode-versus-Min-MaxLMI-Based-MPC/attachment/5bf0f01d3843b00675457f08/AS%3A694179780890625%401542516765597/download/constrained+model+predictive+control+stability+and+optimality+%28automatica2000%29.pdf). Canonical reference for Receding Horizon Control.
-
-<a id="ref-elo"></a>**[9]** Elo, A.E. (1978). *The Rating of Chessplayers, Past and Present*. Arco Publishing. [Link](https://gwern.net/doc/statistics/order/comparison/1978-elo-theratingofchessplayerspastandpresent.pdf). The formulas in §2.1 derive directly from this.
-
-<a id="ref-pulp"></a>**[10]** Mitchell, S., O'Sullivan, M. and Dunning, I. (2011). *PuLP: A Linear Programming Toolkit for Python*. University of Auckland tech report. The CBC solver bundled with PuLP is from the COIN-OR project. [Link](https://github.com/coin-or/Cbc).
-
-<a id="ref-fpl"></a>**[11]** Premier League. *Fantasy Premier League Public API*. Undocumented but stable at `https://fantasy.premierleague.com/api/`. Endpoints used: `bootstrap-static/`, `fixtures/`, `element-summary/{id}/`.
-
----
-
-## 10. Future Work
+## 9. Future Work
 
 - **Correlated-risk portfolio objective.** Replace the diagonal $\hat{\sigma}^2$ penalty with a proper $x^\top \Sigma x$ term driven by joint match-player Monte Carlo. Requires migrating from CBC to a MIQP solver (Gurobi / CPLEX / SCIP).
-- **Price-change prediction.** Model overnight price deltas from `transfers_in_event` / `transfers_out_event` to time transfers before price moves, preserving squad value over the season.
-- **Set-piece / manager changes.** Embedding-based detection of regime changes (new manager, new set-piece taker) that invalidate historical rolling features.
+- **Price-change prediction.** Model overnight price deltas from `transfers_in_event` / `transfers_out_event` to time transfers before price moves and preserve squad value over the season.
+- **Set-piece and manager regime changes.** Embedding-based detection of regime breaks (new manager, new set-piece taker) that invalidate historical rolling features.
 - **Learned chip scheduler.** Re-formulate chip activation as a jointly-solved MILP extension rather than a post-hoc heuristic.
+- **External feature source.** Migrate from the live FPL API to the [olbauday/FPL-Core-Insights](https://www.kaggle.com/datasets/olbauday/fpl-core-insights) dataset for Opta-like stats and ClubElo ratings.
+
+---
+
+## 10. References
+
+**Boosting and quantile regression**
+
+- [XGBoost: A Scalable Tree Boosting System][ref-xgboost] — Chen & Guestrin, *KDD* 2016. Backbone for both the Poisson goal model and the three quantile point models.
+- [Regression Quantiles][ref-koenker] — Koenker & Bassett, *Econometrica* 1978. Pinball loss minimized by the q10/q50/q90 boosters.
+- [Quantile and Probability Curves Without Crossing][ref-chernozhukov] — Chernozhukov, Fernández-Val & Galichon, *Econometrica* 2010. Principled non-crossing alternative to the row-sort heuristic used here.
+
+**Football scoring models**
+
+- [Modelling Association Football Scores and Inefficiencies in the Football Betting Market][ref-dc] — Dixon & Coles, *Journal of the Royal Statistical Society* 1997. Source of the low-score $\tau$ correction applied to the joint Poisson PMF.
+- [Modelling Association Football Scores][ref-maher] — Maher, *Statistica Neerlandica* 1982. Bayesian hierarchical Poisson alternative considered and rejected for sample-size reasons.
+
+**Ratings**
+
+- [The Rating of Chessplayers, Past and Present][ref-elo] — Elo, 1978. The original Elo formulation §2.1 derives from.
+- [How We Calculate NBA Elo Ratings][ref-538] — Silver & Fischer-Baum, FiveThirtyEight 2015. Source of the MoV exponent convention.
+
+**Optimization**
+
+- [Portfolio Selection][ref-markowitz] — Markowitz, *Journal of Finance* 1952. Motivates the $\mu - \nu \sigma^2$ structure of the squad objective.
+- [Constrained Model Predictive Control: Stability and Optimality][ref-rhc] — Mayne, Rawlings, Rao & Scokaert, *Automatica* 2000. Canonical reference for Receding Horizon Control.
+- [PuLP: A Linear Programming Toolkit for Python][ref-pulp] — Mitchell, O'Sullivan & Dunning, 2011. Modeling layer over the COIN-OR CBC solver used here.
+
+**Data source**
+
+- [Fantasy Premier League Public API][ref-fpl] — Premier League. Undocumented but stable at `https://fantasy.premierleague.com/api/`. Endpoints used: `bootstrap-static/`, `fixtures/`, `element-summary/{id}/`.
+
+[ref-xgboost]: https://arxiv.org/abs/1603.02754
+[ref-dc]: https://www.ajbuckeconbikesail.net/wkpapers/Airports/MVPoisson/soccer_betting.pdf
+[ref-maher]: http://www.90minut.pl/misc/maher.pdf
+[ref-koenker]: https://people.eecs.berkeley.edu/~jordan/sail/readings/koenker-bassett.pdf
+[ref-chernozhukov]: http://alfredgalichon.com/wp-content/uploads/2012/10/Econometrica_article_may-2010.pdf
+[ref-538]: https://fivethirtyeight.com/features/how-we-calculate-nba-elo-ratings/
+[ref-markowitz]: http://efinance.org.cn/cn/fm/Portfolio%20Selection.pdf
+[ref-rhc]: https://www.researchgate.net/profile/Saeed-Rahmati-2/post/Dual-mode-versus-Min-MaxLMI-Based-MPC/attachment/5bf0f01d3843b00675457f08/AS%3A694179780890625%401542516765597/download/constrained+model+predictive+control+stability+and+optimality+%28automatica2000%29.pdf
+[ref-elo]: https://gwern.net/doc/statistics/order/comparison/1978-elo-theratingofchessplayerspastandpresent.pdf
+[ref-pulp]: https://github.com/coin-or/Cbc
+[ref-fpl]: https://fantasy.premierleague.com/api/
+
+---
+
+## Data and Credit
+
+Live data is pulled from the [Fantasy Premier League Public API][ref-fpl]. All credit for the underlying match data, player metadata, and points scoring goes to the Premier League and its data providers (Opta for the underlying event data). Use of the API is subject to its own terms — this project consumes only public, read-only endpoints and is not affiliated with or endorsed by the Premier League.
+
+---
+
+## License
+
+TBD.
+
+> **Note:** The FPL API and any Opta-derived metrics surfaced through it are governed by their own separate terms.
