@@ -77,7 +77,7 @@ $$
 
 $$R_h' = R_h + K \cdot \text{MoV} \cdot (S_h - E_h), \qquad \text{MoV} = (\lvert g_h - g_a \rvert + 1)^{0.4}$$
 
-The MoV exponent follows FiveThirtyEight's sports-Elo methodology — see [How We Calculate NBA Elo Ratings][ref-538]. It dampens the effect of blowouts while still rewarding decisive wins. The base Elo update derives directly from [The Rating of Chessplayers, Past and Present][ref-elo]. For every fixture (including upcoming), we stamp the **pre-match** Elo of both sides (`elo_h_pre`, `elo_a_pre`) so it can be used as a leakage-free feature.
+The MoV exponent follows FiveThirtyEight's sports-Elo methodology — see [How We Calculate NBA Elo Ratings][ref-538]. It dampens the effect of blowouts while still rewarding decisive wins. The football adaptation of Elo (validated against bookmaker odds) follows [Using ELO ratings for match result prediction in association football][ref-hvattum]. For every fixture (including upcoming), we stamp the **pre-match** Elo of both sides (`elo_h_pre`, `elo_a_pre`) so it can be used as a leakage-free feature.
 
 | Hyperparameter | Value |
 |---|---|
@@ -105,7 +105,7 @@ Two independent XGBoost regressors with a `count:poisson` objective model expect
 
 $$\lambda_h = f_h(\mathbf{x}), \qquad \lambda_a = f_a(\mathbf{x})$$
 
-where $\mathbf{x}$ is the 31-dimensional match feature vector from §2. A Bayesian hierarchical Poisson à la [Modelling Association Football Scores][ref-maher] was rejected because the FPL API only exposes a single season of data; with around 380 finished fixtures, partial-pooling posteriors cannot out-perform a tree ensemble that captures non-linear interactions (press intensity × block depth, Elo gap × home advantage, etc.).
+where $\mathbf{x}$ is the 31-dimensional match feature vector from §2. A Bayesian hierarchical Poisson model — see e.g. [Bayesian hierarchical model for the prediction of football results][ref-baio] — was rejected because the FPL API only exposes a single season of data; with around 380 finished fixtures, partial-pooling posteriors cannot out-perform a tree ensemble that captures non-linear interactions (press intensity × block depth, Elo gap × home advantage, etc.).
 
 ### 3.2 Dixon–Coles low-score correction
 
@@ -149,7 +149,7 @@ FPL points per player per GW are discrete, heavy-tailed, and bimodal (zero for d
 | q50 (median EV) | Primary objective μ — robust to heavy right tail |
 | q90 (ceiling) | Triple Captain timing, variance estimate |
 
-We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \{0.10, 0.50, 0.90\}$, minimizing the pinball loss from [Regression Quantiles][ref-koenker]:
+We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \{0.10, 0.50, 0.90\}$, minimizing pinball loss. The tree-ensemble extension of quantile regression — and the practical motivation for using boosted trees here rather than a single linear quantile fit — is laid out in [Quantile Regression Forests][ref-meinshausen]:
 
 $$
 \mathcal{L}_\alpha(y, \hat{y}) = \begin{cases}
@@ -226,7 +226,7 @@ Design notes:
 
 - $\mu_{i,t} = \hat{q}^{(i,t)}_{50}$ is the median EV, more robust to the heavy right tail than the mean.
 - The bench weight $b = 0.15$ is an empirical estimate of auto-sub realization, roughly $P(\text{bench player auto-subbed in})$ multiplied by the average fraction of starter points retained.
-- **EO tilt** $\eta \cdot \mu \cdot (1 - \text{EO})$ defaults to zero, which targets pure points EV. Setting $\eta > 0$ late in the season pushes the solver toward differentials (high EV, low ownership) to maximize rank-EV. The $\mu - \nu \sigma^2$ baseline structure is motivated by [Portfolio Selection][ref-markowitz].
+- **EO tilt** $\eta \cdot \mu \cdot (1 - \text{EO})$ defaults to zero, which targets pure points EV. Setting $\eta > 0$ late in the season pushes the solver toward differentials (high EV, low ownership) to maximize rank-EV. The $\mu - \nu \sigma^2$ baseline structure is the same Markowitz-style mean–variance trade-off applied to fantasy lineup selection by [Picking Winners in Daily Fantasy Sports Using Integer Programming][ref-hvz].
 - A full quadratic portfolio variance $x^\top \Sigma x$ would require MIQP; CBC is LP-only, so we take the diagonal approximation. Within-team correlation is bounded by the 3-per-club constraint and partly absorbed into learned $\hat{\sigma}^2_{i,t}$ values.
 
 ### 5.3 Structural constraints (applied at every $t$)
@@ -267,7 +267,7 @@ Combined with the $-4 h_t$ term in the objective, the solver only commits a hit 
 
 ### 5.5 Receding Horizon Control
 
-The full multi-period MILP is solved with $H = 5$ look-ahead each week, but only the decisions for $t_0$ (the next GW) are executed: `transfers_in`, `transfers_out`, `xi_ids`, `captain`, `vice`, `hits`. The following week's run re-solves from the updated state (squad, bank, free transfers). This is the standard MPC formulation from [Constrained Model Predictive Control: Stability and Optimality][ref-rhc], which balances long-horizon optimality against the wrongness of far-future EV predictions.
+The full multi-period MILP is solved with $H = 5$ look-ahead each week, but only the decisions for $t_0$ (the next GW) are executed: `transfers_in`, `transfers_out`, `xi_ids`, `captain`, `vice`, `hits`. The following week's run re-solves from the updated state (squad, bank, free transfers). This is the standard MPC formulation; see [Model Predictive Control: Recent Developments and Future Promise][ref-mpc] for a modern survey of stochastic and economic MPC, which informs how RHC trades long-horizon optimality against the wrongness of far-future EV predictions.
 
 ---
 
@@ -361,23 +361,23 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 **Boosting and quantile regression**
 
 - [XGBoost: A Scalable Tree Boosting System][ref-xgboost] — Chen & Guestrin, *KDD* 2016. Backbone for both the Poisson goal model and the three quantile point models.
-- [Regression Quantiles][ref-koenker] — Koenker & Bassett, *Econometrica* 1978. Pinball loss minimized by the q10/q50/q90 boosters.
+- [Quantile Regression Forests][ref-meinshausen] — Meinshausen, *JMLR* 2006. Practical foundation for tree-ensemble quantile regression — the conceptual bridge from classical quantile regression to the XGBoost q10/q50/q90 boosters used here.
 - [Quantile and Probability Curves Without Crossing][ref-chernozhukov] — Chernozhukov, Fernández-Val & Galichon, *Econometrica* 2010. Principled non-crossing alternative to the row-sort heuristic used here.
 
 **Football scoring models**
 
 - [Modelling Association Football Scores and Inefficiencies in the Football Betting Market][ref-dc] — Dixon & Coles, *Journal of the Royal Statistical Society* 1997. Source of the low-score $\tau$ correction applied to the joint Poisson PMF.
-- [Modelling Association Football Scores][ref-maher] — Maher, *Statistica Neerlandica* 1982. Bayesian hierarchical Poisson alternative considered and rejected for sample-size reasons.
+- [Bayesian hierarchical model for the prediction of football results][ref-baio] — Baio & Blangiardo, *Journal of Applied Statistics* 2010. Modern Bayesian hierarchical Poisson goal-scoring model — alternative considered and rejected for single-season sample-size reasons.
 
 **Ratings**
 
-- [The Rating of Chessplayers, Past and Present][ref-elo] — Elo, 1978. The original Elo formulation §2.1 derives from.
+- [Using ELO ratings for match result prediction in association football][ref-hvattum] — Hvattum & Arntzen, *International Journal of Forecasting* 2010. Adapts Elo from chess to football and validates against bookmaker odds; source of the football-specific tuning conventions in §2.1.
 - [How We Calculate NBA Elo Ratings][ref-538] — Silver & Fischer-Baum, FiveThirtyEight 2015. Source of the MoV exponent convention.
 
 **Optimization**
 
-- [Portfolio Selection][ref-markowitz] — Markowitz, *Journal of Finance* 1952. Motivates the $\mu - \nu \sigma^2$ structure of the squad objective.
-- [Constrained Model Predictive Control: Stability and Optimality][ref-rhc] — Mayne, Rawlings, Rao & Scokaert, *Automatica* 2000. Canonical reference for Receding Horizon Control.
+- [Picking Winners in Daily Fantasy Sports Using Integer Programming][ref-hvz] — Hunter, Vielma & Zaman, 2016. Direct precedent for applying portfolio-style integer programming to fantasy sports lineup selection; motivates the $\mu - \nu \sigma^2$ structure of the squad objective in the FPL setting.
+- [Model Predictive Control: Recent Developments and Future Promise][ref-mpc] — Mayne, *Automatica* 2014. Modern survey of MPC including stochastic/economic variants; canonical reference for the Receding Horizon Control structure used here.
 - [PuLP: A Linear Programming Toolkit for Python][ref-pulp] — Mitchell, O'Sullivan & Dunning, 2011. Modeling layer over the COIN-OR CBC solver used here.
 
 **Data source**
@@ -386,13 +386,13 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 
 [ref-xgboost]: https://arxiv.org/abs/1603.02754
 [ref-dc]: https://www.ajbuckeconbikesail.net/wkpapers/Airports/MVPoisson/soccer_betting.pdf
-[ref-maher]: http://www.90minut.pl/misc/maher.pdf
-[ref-koenker]: https://people.eecs.berkeley.edu/~jordan/sail/readings/koenker-bassett.pdf
+[ref-baio]: https://doi.org/10.1080/02664760802684177
+[ref-meinshausen]: https://jmlr.org/papers/v7/meinshausen06a.html
 [ref-chernozhukov]: http://alfredgalichon.com/wp-content/uploads/2012/10/Econometrica_article_may-2010.pdf
 [ref-538]: https://fivethirtyeight.com/features/how-we-calculate-nba-elo-ratings/
-[ref-markowitz]: http://efinance.org.cn/cn/fm/Portfolio%20Selection.pdf
-[ref-rhc]: https://www.researchgate.net/profile/Saeed-Rahmati-2/post/Dual-mode-versus-Min-MaxLMI-Based-MPC/attachment/5bf0f01d3843b00675457f08/AS%3A694179780890625%401542516765597/download/constrained+model+predictive+control+stability+and+optimality+%28automatica2000%29.pdf
-[ref-elo]: https://gwern.net/doc/statistics/order/comparison/1978-elo-theratingofchessplayerspastandpresent.pdf
+[ref-hvz]: https://arxiv.org/abs/1604.01455
+[ref-mpc]: https://doi.org/10.1016/j.automatica.2014.10.128
+[ref-hvattum]: https://www.sciencedirect.com/science/article/abs/pii/S0169207009001708
 [ref-pulp]: https://github.com/coin-or/Cbc
 [ref-fpl]: https://fantasy.premierleague.com/api/
 
