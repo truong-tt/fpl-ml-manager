@@ -89,7 +89,8 @@ def predict_quantiles(
         for q, m in models[pos].items():
             out.loc[mask, f"q{int(q * 100):02d}"] = m.predict(dm)
     vals = out[["q10", "q50", "q90"]].values
-    vals = np.sort(vals, axis=1)
+    vals = vals.copy()
+    vals.sort(axis=1)
     out[["q10", "q50", "q90"]] = vals
     # Sanity ceiling — credible single-GW boom tops ~25 (hat-trick+assist+bonus).
     return out.clip(lower=-3.0, upper=25.0)
