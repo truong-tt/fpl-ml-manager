@@ -77,7 +77,7 @@ $$
 
 $$R_h' = R_h + K \cdot \text{MoV} \cdot (S_h - E_h), \qquad \text{MoV} = (\lvert g_h - g_a \rvert + 1)^{0.4}$$
 
-The MoV-multiplier idea is inspired by FiveThirtyEight's sports-Elo methodology — see [How We Calculate NBA Elo Ratings][ref-538] for the canonical writeup; our specific exponent of $0.4$ differs from 538's NBA formula but is in the same family and dampens the effect of blowouts while still rewarding decisive wins. Adapting Elo from chess to football match prediction is well-studied — see [Using ELO ratings for match result prediction in association football][ref-hvattum] for a validation against bookmaker odds. The fallback hyperparameters below follow community sports-Elo conventions; ClubElo applies its own tuning, so the replay only kicks in for sparse rows.
+The MoV-multiplier idea is inspired by FiveThirtyEight's sports-Elo methodology — see [How We Calculate NBA Elo Ratings][ref-538] for the canonical writeup; our specific exponent of $0.4$ differs from 538's NBA formula but is in the same family and dampens the effect of blowouts while still rewarding decisive wins. Adapting Elo from chess to football match prediction is well-studied — see [Using ELO ratings for match result prediction in association football][ref-hvattum] for a validation against bookmaker odds. Hyperparameters below follow community sports-Elo conventions.
 
 | Hyperparameter (fallback only) | Value |
 |---|---|
@@ -89,7 +89,7 @@ The MoV-multiplier idea is inspired by FiveThirtyEight's sports-Elo methodology 
 
 For the **match** model, two stat families are rolled forward at $w \in \{3, 5, 10\}$ for the FPL-derived block and at $w = 5$ for the Opta block, always **shifted by one GW** so features for fixture at GW $t$ only use information available before GW $t$:
 
-$$\overline{xG}_{T,t}^{(w)} = \frac{1}{w} \sum_{k=t-w}^{t-1} xG_{T,k}$$
+$$\overline{\text{xG}}_{T,t}^{(w)} = \frac{1}{w} \sum_{k=t-w}^{t-1} \text{xG}_{T,k}$$
 
 | Source | Stats |
 |---|---|
@@ -188,7 +188,7 @@ A blank GW yields $F_{i,t} = \emptyset$ and therefore $\hat{q}^{(i,t)}_\alpha = 
 
 ### 4.4 Variance estimate from quantile spread
 
-The optimizer's risk term needs a scalar variance per $(i, t)$. Assuming the points distribution is approximately Gaussian in the central mass (a coarse but serviceable approximation for players expected to play), the interval from q10 to q90 spans about 2.56 standard deviations (formally, $\Phi^{-1}(0.9) - \Phi^{-1}(0.1) \approx 2.56$):
+The optimizer's risk term needs a scalar variance per $(i, t)$. Assuming the points distribution is approximately Gaussian in the central mass for players expected to play, the interval from q10 to q90 spans about 2.56 standard deviations (formally, $\Phi^{-1}(0.9) - \Phi^{-1}(0.1) \approx 2.56$):
 
 $$\hat{\sigma}^2_{i,t} \approx \left( \frac{\hat{q}^{(i,t)}_{90} - \hat{q}^{(i,t)}_{10}}{2.56} \right)^2$$
 
@@ -196,9 +196,9 @@ This is lighter than a full Monte-Carlo covariance estimate (which the linear CB
 
 ### 4.5 Captaincy score
 
-Captaincy is a separate decision from XI selection: the optimizer's captain term contributes `cap_xp · c_{i,t}` independently of `μ · s_{i,t}`. Pure $\hat{q}_{90}$ as the captain reward over-weighted ceiling and crowned low-mean / high-variance players over high-mean MIDs with comparable upside. We anchor the captain reward on the median EV and add a fraction of the upside premium:
+Captaincy is a separate decision from XI selection: the optimizer's captain term contributes $\kappa_{i,t} \cdot c_{i,t}$ independently of $\mu_{i,t} \cdot s_{i,t}$. Pure $\hat{q}_{90}$ as the captain reward over-weighted ceiling and crowned low-mean / high-variance players over high-mean MIDs with comparable upside. We anchor the captain reward on the median EV and add a fraction of the upside premium:
 
-$$\text{cap\_xp}^{(i,t)} = \hat{q}^{(i,t)}_{50} + \alpha \cdot \bigl(\hat{q}^{(i,t)}_{90} - \hat{q}^{(i,t)}_{50}\bigr), \qquad \alpha = 0.3$$
+$$\kappa_{i,t} = \hat{q}^{(i,t)}_{50} + \gamma \cdot \bigl(\hat{q}^{(i,t)}_{90} - \hat{q}^{(i,t)}_{50}\bigr), \qquad \gamma = 0.3$$
 
 Mean is the dominant signal; ceiling is a tiebreaker among similar-mean candidates. The `CAP_UPSIDE_WEIGHT` constant in [src/fpl_engine.py](../src/fpl_engine.py) is the tunable knob — lower it (e.g. 0.2) for safer captains, raise it (0.5+) for more boom-chasing.
 
@@ -232,7 +232,7 @@ $$\max \sum_{t=t_0}^{t_0 + H - 1} \sum_{i=1}^{N} \Bigl[\, \mu_{i,t}\, s_{i,t} \;
 |---|---|
 | $\mu_{i,t}\, s_{i,t}$ | Starter expected points |
 | $b \cdot \mu_{i,t}\, (x_{i,t} - s_{i,t})$ | Bench auto-sub EV ($b = 0.15$) |
-| $\kappa_{i,t}\, c_{i,t}$ | Captain reward, $\kappa_{i,t} = \text{cap\_xp}^{(i,t)}$ from §4.5 |
+| $\kappa_{i,t}\, c_{i,t}$ | Captain reward $\kappa_{i,t}$ from §4.5 |
 | $-\nu\, \hat{\sigma}^2_{i,t}\, x_{i,t}$ | Risk penalty (diagonal Markowitz) |
 | $\eta\, \mu_{i,t}\, (1 - \text{EO}_i)\, x_{i,t}$ | Differential / EO tilt (zero by default) |
 | $-4\, h_t$ | Hit cost |
@@ -272,11 +272,11 @@ $$\text{tin}_{i,t} \geq x_{i,t} - x_{i,t-1}$$
 
 with $x_{i, t_0 - 1} = 1$ if player $i$ was in the prior squad, else $0$. Free-transfer conservation, with a cap of 5:
 
-$$\text{ft}_{t_0} = \text{ft}^{\text{init}}, \qquad \text{ft}_t = 1 + \text{sv}_{t-1} \text{ for } t > t_0$$
+$$\text{ft}_{t_0} = \text{ft}^{\text{init}}, \qquad \text{ft}_t = \min\!\bigl(5,\; 1 + \text{sv}_{t-1}\bigr) \text{ for } t > t_0$$
 
-Transfer budget at each GW — total transfers in equals free transfers used plus hits:
+Transfer budget at each GW — total transfers in equals free transfers used plus hits, and saved transfers cannot exceed those held:
 
-$$\sum_i \text{tin}_{i,t} = (\text{ft}_t - \text{sv}_t) + h_t, \qquad h_t \geq 0$$
+$$\sum_i \text{tin}_{i,t} = (\text{ft}_t - \text{sv}_t) + h_t, \qquad h_t \geq 0, \qquad \text{sv}_t \leq \text{ft}_t$$
 
 Combined with the $-4 h_t$ term in the objective, the solver only commits a hit when the expected gain strictly exceeds 4 points.
 
@@ -292,7 +292,7 @@ Lives in [src/chips.py](../src/chips.py). Chip activation is a convex function o
 
 | Chip | Heuristic |
 |---|---|
-| **Triple Captain** | Pick the GW and owned MID/FWD maximizing the captaincy score from §4.5: $t^{\star},\, i^{\star} = \arg\max_{t,\, i \in \text{squad},\, \text{pos}(i) \in \{3, 4\}}\, \text{cap\_xp}^{(i,t)}$ |
+| **Triple Captain** | Pick the GW and owned MID/FWD maximizing the captaincy score $\kappa_{i,t}$ from §4.5: $t^{\star},\, i^{\star} = \arg\max_{t,\, i \in \text{squad},\, \text{pos}(i) \in \{3, 4\}}\, \kappa_{i,t}$ |
 | **Bench Boost** | Pick the GW with the highest total bench EV: $t^{\star} = \arg\max_{t}\, \sum_{i \in \text{bench}} \hat{q}^{(i,t)}_{50}$ |
 | **Free Hit** | Pick the GW with the most teams blanking: $t^{\star} = \arg\max_{t}\, \lvert \{ k : k \text{ blanks at } t \} \rvert$ |
 | **Wildcard** | Trigger if the RHC proposes ≥ 4 transfers IN or ≥ 2 hits — the MILP's willingness to pay hits is a proxy signal that the current squad is far from optimal. |
@@ -388,8 +388,8 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 
 **Ratings**
 
-- [Using ELO ratings for match result prediction in association football][ref-hvattum] — Hvattum & Arntzen, *International Journal of Forecasting* 2010. Adapts Elo from chess to football and validates against bookmaker odds; representative of the broader football-Elo literature §2.1 draws on (the specific K / HFA / MoV-exponent values used here are community sports-Elo conventions, not this paper's exact tuning).
-- [How We Calculate NBA Elo Ratings][ref-538] — Silver & Fischer-Baum, FiveThirtyEight 2015. Inspired the margin-of-victory multiplier idea used here; our specific exponent of $0.4$ is in the same family but differs from 538's NBA formula.
+- [Using ELO ratings for match result prediction in association football][ref-hvattum] — Hvattum & Arntzen, *International Journal of Forecasting* 2010. Adapts Elo from chess to football and validates against bookmaker odds.
+- [How We Calculate NBA Elo Ratings][ref-538] — Silver & Fischer-Baum, FiveThirtyEight 2015. Source of the margin-of-victory multiplier idea.
 
 **Optimization**
 
@@ -421,7 +421,7 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 
 ## Data and Credit
 
-Primary data comes from the [olbauday/FPL-Core-Insights][ref-fpl-ci] dataset, which combines the [Fantasy Premier League Public API][ref-fpl] with manually curated Opta-like per-match stats and [ClubElo][ref-clubelo] ratings — all credit goes to those upstream providers. A live FPL API call (`bootstrap-static/`) is used as a thin overlay for current-GW prices and injury status. Use of these sources is subject to each provider's own terms; this project consumes only public, read-only endpoints / files and is not affiliated with or endorsed by the Premier League, ClubElo, or the FPL-Core-Insights maintainers.
+All credit for upstream data goes to the providers listed in §10. Use of these sources is subject to each provider's own terms; this project consumes only public, read-only endpoints / files and is not affiliated with or endorsed by the Premier League, ClubElo, or the FPL-Core-Insights maintainers.
 
 ---
 
