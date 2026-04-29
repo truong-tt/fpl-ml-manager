@@ -100,11 +100,17 @@ class FPLEngine:
         # Use std (not variance) so penalty scales linearly with ceiling, not
         # quadratically - prevents the solver from dodging high-ceiling players.
         agg["variance"] = (agg["q90"] - agg["q10"]) / 2.56
+        # Captaincy = mean anchor + small upside premium. Pure q90 crowned
+        # 1.99-mean ceiling players over high-mean MIDs; alpha=0.3 keeps mean dominant.
+        CAP_UPSIDE_WEIGHT = 0.3
+        agg["cap_xp"] = agg["q50"] + CAP_UPSIDE_WEIGHT * (agg["q90"] - agg["q50"])
 
         xp = agg.pivot(index="player_id", columns="fixture_gw", values="q50").fillna(0.0)
         xp.columns = [f"xp_{int(c)}" for c in xp.columns]
         var = agg.pivot(index="player_id", columns="fixture_gw", values="variance").fillna(0.0)
         var.columns = [f"var_{int(c)}" for c in var.columns]
+        cap = agg.pivot(index="player_id", columns="fixture_gw", values="cap_xp").fillna(0.0)
+        cap.columns = [f"cap_xp_{int(c)}" for c in cap.columns]
 
         meta = self.players[["id", "web_name", "team", "element_type",
                              "now_cost", "selected_by_percent"]].rename(
@@ -113,8 +119,9 @@ class FPLEngine:
         meta["eo"] = pd.to_numeric(meta["selected_by_percent"], errors="coerce").fillna(0.0) / 100.0
         meta = meta[["id", "name", "team_id", "pos_id", "price", "eo"]]
 
-        out = meta.merge(xp, left_on="id", right_index=True).merge(
-            var, left_on="id", right_index=True)
+        out = (meta.merge(xp, left_on="id", right_index=True)
+                   .merge(var, left_on="id", right_index=True)
+                   .merge(cap, left_on="id", right_index=True))
         out = out[out["pos_id"].isin([1, 2, 3, 4])].reset_index(drop=True)
 
         xp_cols = sorted([c for c in out.columns if c.startswith("xp_")],

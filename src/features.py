@@ -1,15 +1,16 @@
-"""Rolling team / player features + incremental team Elo."""
+"""Rolling team / player features. Elo comes from ClubElo (FPL-CI); replay is the fallback."""
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
 TEAM_WINDOWS = [3, 5, 10]
+# Used only when FPL-CI home_team_elo/away_team_elo are absent or null.
 INIT_ELO, K, HFA = 1500.0, 20.0, 60.0
 
 
-def elo_snapshot_series(fixtures: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
-    """Replays finished fixtures chronologically, stamping pre-match Elo on every row."""
+def _elo_replay(fixtures: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
+    """Chronological Elo replay over finished fixtures (fallback path)."""
     ratings = {int(t): INIT_ELO for t in teams["team_id"]}
     sort_col = "kickoff_time" if "kickoff_time" in fixtures.columns else "event"
     out = fixtures.sort_values(sort_col).copy().reset_index(drop=True)
@@ -29,6 +30,25 @@ def elo_snapshot_series(fixtures: pd.DataFrame, teams: pd.DataFrame) -> pd.DataF
     return out
 
 
+def elo_snapshot_series(fixtures: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
+    """Stamps pre-match Elo (ClubElo if present on fixtures.csv, replay otherwise)."""
+    has_elo = "home_team_elo" in fixtures.columns and "away_team_elo" in fixtures.columns
+    if not has_elo:
+        return _elo_replay(fixtures, teams)
+
+    sort_col = "kickoff_time" if "kickoff_time" in fixtures.columns else "event"
+    out = fixtures.sort_values(sort_col).copy().reset_index(drop=True)
+    out["elo_h_pre"] = pd.to_numeric(out["home_team_elo"], errors="coerce")
+    out["elo_a_pre"] = pd.to_numeric(out["away_team_elo"], errors="coerce")
+    if out[["elo_h_pre", "elo_a_pre"]].isna().any().any():
+        replayed = _elo_replay(fixtures, teams).set_index("id")[["elo_h_pre", "elo_a_pre"]]
+        idx = out.set_index("id").index
+        for col in ("elo_h_pre", "elo_a_pre"):
+            mask = out[col].isna()
+            out.loc[mask, col] = replayed.loc[idx[mask], col].values
+    return out
+
+
 def _rolling_team_stats(history: pd.DataFrame) -> pd.DataFrame:
     """Per-(team, GW) xG/xGA rolled forward at the TEAM_WINDOWS horizons."""
     if history.empty or "team" not in history.columns:
@@ -43,6 +63,46 @@ def _rolling_team_stats(history: pd.DataFrame) -> pd.DataFrame:
                 lambda x: x.shift().rolling(w, min_periods=1).mean()
             )
     return g
+
+
+# Match-level Opta from fixtures.csv — true on-the-ball xG, distinct from
+# _rolling_team_stats which sums per-player FPL xG.
+OPTA_STATS = [
+    ("expected_goals_xg", "oxg"),
+    ("big_chances", "obc"),
+    ("total_shots", "osh"),
+]
+OPTA_WINDOW = 5
+OPTA_DEFAULTS = {"oxg": 1.2, "oxga": 1.2, "obc": 1.5, "obca": 1.5, "osh": 11.0, "osha": 11.0}
+
+
+def _rolling_fixture_team_stats(fixtures: pd.DataFrame) -> pd.DataFrame:
+    """Per-(team, GW) rolling Opta stats; each fixture contributes a row per side."""
+    needed = [f"{p}_{r}" for r, _ in OPTA_STATS for p in ("home", "away")]
+    if not all(c in fixtures.columns for c in needed):
+        return pd.DataFrame()
+    parts = []
+    for is_home in (True, False):
+        side = "home" if is_home else "away"
+        opp = "away" if is_home else "home"
+        d = pd.DataFrame({
+            "team": fixtures["team_h" if is_home else "team_a"].values,
+            "round": fixtures["event"].values,
+            "kickoff_time": fixtures["kickoff_time"].values,
+        })
+        for raw, short in OPTA_STATS:
+            d[short] = pd.to_numeric(fixtures[f"{side}_{raw}"], errors="coerce").values
+            d[f"{short}a"] = pd.to_numeric(fixtures[f"{opp}_{raw}"], errors="coerce").values
+        parts.append(d)
+    long = pd.concat(parts, ignore_index=True).dropna(subset=["team"])
+    long = long.sort_values(["team", "kickoff_time"]).reset_index(drop=True)
+    short_cols = [c for _, c in OPTA_STATS] + [f"{c}a" for _, c in OPTA_STATS]
+    for c in short_cols:
+        long[f"roll_{c}_{OPTA_WINDOW}"] = long.groupby("team")[c].transform(
+            lambda x: x.shift().rolling(OPTA_WINDOW, min_periods=1).mean()
+        )
+    keep = [f"roll_{c}_{OPTA_WINDOW}" for c in short_cols]
+    return long.groupby(["team", "round"], as_index=False)[keep].mean()
 
 
 def build_match_features(
@@ -61,9 +121,26 @@ def build_match_features(
         for w in TEAM_WINDOWS:
             for s in ("xg", "xga", "gf", "ga"):
                 fx[f"{side}_{s}_{w}"] = m[f"roll_{s}_{w}"].fillna(1.2).values
+
+    og = _rolling_fixture_team_stats(fixtures)
+    opta_short = [c for _, c in OPTA_STATS] + [f"{c}a" for _, c in OPTA_STATS]
+    for side, team_col in (("h", "team_h"), ("a", "team_a")):
+        if og.empty:
+            for c in opta_short:
+                fx[f"{side}_{c}_{OPTA_WINDOW}"] = OPTA_DEFAULTS.get(c, 1.0)
+            continue
+        m = fx.merge(og, left_on=[team_col, "event"],
+                     right_on=["team", "round"], how="left", suffixes=("", "_o"))
+        for c in opta_short:
+            fx[f"{side}_{c}_{OPTA_WINDOW}"] = (
+                m[f"roll_{c}_{OPTA_WINDOW}"].fillna(OPTA_DEFAULTS.get(c, 1.0)).values
+            )
+
     fx["elo_diff"] = fx["elo_h_pre"] - fx["elo_a_pre"]
     fx["xg_diff_5"] = fx["h_xg_5"] - fx["a_xg_5"]
     fx["xga_diff_5"] = fx["h_xga_5"] - fx["a_xga_5"]
+    fx["oxg_diff"] = fx[f"h_oxg_{OPTA_WINDOW}"] - fx[f"a_oxg_{OPTA_WINDOW}"]
+    fx["oxga_diff"] = fx[f"h_oxga_{OPTA_WINDOW}"] - fx[f"a_oxga_{OPTA_WINDOW}"]
     return fx
 
 
@@ -71,7 +148,10 @@ def match_feature_cols() -> list[str]:
     """Canonical feature-column order for the match model."""
     cols = [f"{s}_{stat}_{w}"
             for s in ("h", "a") for w in TEAM_WINDOWS for stat in ("xg", "xga", "gf", "ga")]
-    return cols + ["elo_h_pre", "elo_a_pre", "elo_diff", "xg_diff_5", "xga_diff_5"]
+    opta_short = [c for _, c in OPTA_STATS] + [f"{c}a" for _, c in OPTA_STATS]
+    cols += [f"{s}_{c}_{OPTA_WINDOW}" for s in ("h", "a") for c in opta_short]
+    return cols + ["elo_h_pre", "elo_a_pre", "elo_diff",
+                   "xg_diff_5", "xga_diff_5", "oxg_diff", "oxga_diff"]
 
 
 def build_player_features(
@@ -85,10 +165,14 @@ def build_player_features(
     for lag in (1, 2, 3):
         df[f"lag{lag}_min"] = df.groupby("player_id")["minutes"].shift(lag).fillna(0.0)
 
+    # `total_points` is intentionally excluded — rolling it creates a feedback loop
+    # where a premium's bad recent GW projects them lower forever.
     roll_map = {"expected_goals": "xg", "expected_assists": "xa",
                 "expected_goal_involvements": "xgi", "bps": "bps", "ict_index": "ict",
                 "saves": "saves", "clearances_blocks_interceptions": "cbi",
-                "tackles": "tkl", "recoveries": "rec", "total_points": "pts"}
+                "tackles": "tkl", "recoveries": "rec",
+                "pm_xg": "oxg", "pm_xa": "oxa", "pm_cc": "occ",
+                "pm_tob": "otob", "pm_shots": "osh", "pm_drib": "odrib"}
     for raw, short in roll_map.items():
         if raw not in df.columns:
             df[raw] = 0.0
@@ -105,8 +189,7 @@ def build_player_features(
     ]].rename(columns={"id": "player_id", "element_type": "pos_id", "team": "team_id"})
     df = df.merge(meta, on="player_id", how="left")
     df["pos_id"] = df["pos_id"].fillna(3).astype(int)
-    # One-hot position: XGBoost treating pos_id as ordinal conflates GK<->FWD
-    # in weird ways because their scoring distributions differ structurally.
+    # One-hot — treating pos_id as ordinal conflates GK<->FWD scoring distributions.
     for p in (1, 2, 3, 4):
         df[f"pos_{p}"] = (df["pos_id"] == p).astype(int)
     df["is_pen_taker"] = (df["penalties_order"].fillna(0) == 1).astype(int)
@@ -134,5 +217,6 @@ def points_feature_cols() -> list[str]:
             "opp_xg_5", "opp_xga_5", "opp_elo", "own_elo", "elo_gap"]
     for w in (5, 10):
         base += [f"roll{w}_{k}" for k in
-                 ("xg", "xa", "xgi", "bps", "ict", "saves", "cbi", "tkl", "rec", "pts")]
+                 ("xg", "xa", "xgi", "bps", "ict", "saves", "cbi", "tkl", "rec",
+                  "oxg", "oxa", "occ", "otob", "osh", "odrib")]
     return base

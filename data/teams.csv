@@ -1,21 +1,21 @@
-team_id,team_name,short_name,strength,strength_overall_home,strength_overall_away
-1,Arsenal,ARS,5,1305,1355
-2,Aston Villa,AVL,3,1135,1230
-3,Burnley,BUR,2,975,1045
-4,Bournemouth,BOU,3,1150,1235
-5,Brentford,BRE,3,1135,1215
-6,Brighton,BHA,4,1170,1250
-7,Chelsea,CHE,3,1190,1195
-8,Crystal Palace,CRY,3,1160,1185
-9,Everton,EVE,3,1135,1160
-10,Fulham,FUL,3,1105,1200
-11,Leeds,LEE,3,1100,1205
-12,Liverpool,LIV,4,1180,1250
-13,Man City,MCI,4,1265,1355
-14,Man Utd,MUN,4,1180,1250
-15,Newcastle,NEW,3,1120,1205
-16,Nott'm Forest,NFO,3,1125,1165
-17,Sunderland,SUN,3,1055,1150
-18,Spurs,TOT,3,1120,1120
-19,West Ham,WHU,3,1095,1130
-20,Wolves,WOL,2,975,1060
+team_id,team_name,short_name,strength,strength_overall_home,strength_overall_away,strength_attack_home,strength_attack_away,strength_defence_home,strength_defence_away,elo,code,fotmob_name
+1,Arsenal,ARS,5,1305,1355,1340,1390,1270,1320,2047,3,Arsenal
+2,Aston Villa,AVL,3,1135,1230,1120,1210,1150,1250,1890,7,Aston Villa
+3,Burnley,BUR,2,975,1045,910,1050,1040,1040,1664,90,Burnley
+4,Bournemouth,BOU,3,1150,1235,1060,1230,1240,1240,1847,91,AFC Bournemouth
+5,Brentford,BRE,3,1135,1215,1120,1160,1150,1270,1833,94,Brentford
+6,Brighton,BHA,4,1170,1250,1140,1220,1200,1280,1865,36,Brighton & Hove Albion
+19,West Ham,WHU,3,1095,1130,1060,1080,1130,1180,1768,21,West Ham United
+20,Wolves,WOL,2,975,1060,950,1050,1000,1070,1677,39,Wolverhampton Wanderers
+7,Chelsea,CHE,3,1190,1195,1130,1140,1250,1250,1840,8,Chelsea
+8,Crystal Palace,CRY,3,1160,1185,1150,1200,1170,1170,1805,31,Crystal Palace
+9,Everton,EVE,3,1135,1160,1130,1150,1140,1170,1820,11,Everton
+10,Fulham,FUL,3,1105,1200,1090,1170,1120,1230,1811,54,Fulham
+11,Leeds,LEE,3,1100,1205,1050,1160,1150,1250,1792,2,Leeds United
+12,Liverpool,LIV,4,1180,1250,1120,1200,1240,1300,1932,14,Liverpool
+13,Man City,MCI,4,1265,1355,1220,1310,1310,1400,1969,43,Manchester City
+14,Man Utd,MUN,4,1180,1250,1120,1190,1240,1310,1881,1,Manchester United
+15,Newcastle,NEW,3,1120,1205,1130,1120,1110,1290,1824,4,Newcastle United
+16,Nott'm Forest,NFO,3,1125,1165,1130,1160,1120,1170,1824,17,Nottingham Forest
+17,Sunderland,SUN,3,1055,1150,1070,1170,1040,1130,1699,56,Sunderland
+18,Spurs,TOT,3,1120,1120,1090,1090,1150,1150,1757,6,Tottenham Hotspur

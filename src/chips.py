@@ -5,15 +5,15 @@ import pandas as pd
 
 
 def recommend_triple_captain(proj: pd.DataFrame, squad_ids: set[int]) -> dict:
-    """Picks the horizon GW with the highest captain xp among owned players."""
-    gws = sorted(int(c.split("_")[1]) for c in proj.columns if c.startswith("xp_"))
-    owned = proj[proj["id"].isin(squad_ids)]
+    """Best (gw, MID/FWD player) by cap_xp among owned — chip lives or dies on the boom."""
+    gws = sorted(int(c.split("_")[-1]) for c in proj.columns if c.startswith("cap_xp_"))
+    owned = proj[proj["id"].isin(squad_ids) & proj["pos_id"].isin([3, 4])]
     best = {"gw": None, "player_id": None, "bonus": 0.0}
     for t in gws:
-        r = owned.sort_values(f"xp_{t}", ascending=False).head(1)
-        if not r.empty and float(r[f"xp_{t}"].iloc[0]) > best["bonus"]:
+        r = owned.sort_values(f"cap_xp_{t}", ascending=False).head(1)
+        if not r.empty and float(r[f"cap_xp_{t}"].iloc[0]) > best["bonus"]:
             best = {"gw": t, "player_id": int(r["id"].iloc[0]),
-                    "bonus": float(r[f"xp_{t}"].iloc[0])}
+                    "bonus": float(r[f"cap_xp_{t}"].iloc[0])}
     return best
 
 

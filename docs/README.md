@@ -5,7 +5,7 @@
 [![PuLP](https://img.shields.io/badge/PuLP-MILP%20%2B%20RHC-yellow.svg)](https://coin-or.github.io/pulp/)
 [![Schedule](https://img.shields.io/badge/GitHub_Actions-weekly-lightgrey.svg)](../.github/workflows/weekly_update.yml)
 
-A data-driven agent that picks and manages a 15-player Fantasy Premier League squad end-to-end. Each week the pipeline learns per-player point distributions with quantile-regression gradient boosting, estimates match-level goal rates with a Dixon–Coles-corrected Poisson model, and solves a single joint MILP for the 15-man squad, the starting XI, and the captain across a rolling horizon — then schedules chips on top.
+A data-driven agent that picks and manages a 15-player Fantasy Premier League squad end-to-end. Each week the pipeline learns per-position, per-player point distributions with quantile-regression gradient boosting, estimates match-level goal rates with a Dixon–Coles-corrected Poisson model, and solves a single joint MILP for the 15-man squad, the starting XI, and the captain across a rolling horizon — then schedules chips on top. Data comes from the [olbauday/FPL-Core-Insights](https://github.com/olbauday/FPL-Core-Insights) CSV dataset (FPL API + Opta-like per-match stats + ClubElo ratings, refreshed twice daily) with a thin live-FPL-API overlay for current-GW prices and injury status.
 
 > **New to FPL?** Start with the [FPL 101 primer](FPL_101.md). The math below assumes you understand clean sheets, appearance points, the bench-order auto-sub rule, and the transfer/chip system.
 
@@ -32,16 +32,16 @@ A data-driven agent that picks and manages a 15-player Fantasy Premier League sq
 
 ## 1. System Architecture
 
-End-to-end pipeline from the FPL public API to a weekly markdown report containing the squad, XI, captain, transfers, hits, and chip recommendations.
+End-to-end pipeline from FPL-Core-Insights CSVs (with a live-FPL-API price overlay) to a weekly markdown report containing the squad, XI, captain, transfers, hits, and chip recommendations.
 
 ```mermaid
 flowchart TD
-    A["Raw FPL API<br/>bootstrap-static, fixtures, element-summary"]
+    A["FPL-Core-Insights CSVs + live FPL API overlay<br/>teams, players, fixtures (Opta + ClubElo), playermatchstats, player_gameweek_stats"]
     B["1. Data Loader<br/>src/data_loader.py<br/>players, teams, fixtures, history CSVs"]
-    C["2. Feature Engineering<br/>src/features.py<br/>chronological Elo + rolling team/player metrics"]
+    C["2. Feature Engineering<br/>src/features.py<br/>ClubElo + rolling team/player metrics + per-player Opta"]
     D["3a. Match Model<br/>src/train_match_model.py<br/>2× Poisson XGBoost + Dixon-Coles τ"]
-    E["3b. Points Model<br/>src/train_points_model.py<br/>3× Quantile XGBoost (q10 / q50 / q90)"]
-    F["4. Inference Engine<br/>src/fpl_engine.py<br/>per-(player, GW) projection frame: μ, σ²"]
+    E["3b. Points Model<br/>src/train_points_model.py<br/>4 positions × 3 quantiles = 12 XGBoost regressors"]
+    F["4. Inference Engine<br/>src/fpl_engine.py<br/>per-(player, GW) projection frame: μ, σ², cap_xp"]
     G["5. MILP Optimizer<br/>src/optimizer.py<br/>squad × XI × captain over horizon H = 5 (RHC)"]
     H["6. Chip Scheduler<br/>src/chips.py<br/>greedy TC / BB / FH / WC heuristics"]
     I["lineup.md + squad_snapshot.csv"]
@@ -63,7 +63,7 @@ Lives in [src/features.py](../src/features.py). Two feature families: team-level
 
 ### 2.1 Team Elo
 
-Team strengths are replayed chronologically over all finished fixtures using a standard Elo update with home-field advantage and a margin-of-victory (MoV) multiplier:
+Pre-match Elo for both sides comes precomputed on every fixture from the FPL-Core-Insights dataset (ClubElo, point-in-time per match, see [clubelo.com](https://clubelo.com)) and is stamped onto every fixture as `elo_h_pre` / `elo_a_pre`. The chronological replay below is retained as a fallback for any rows where the dataset is missing or null:
 
 $$E_h = \frac{1}{1 + 10^{-(R_h + \text{HFA} - R_a)/400}}$$
 
@@ -77,9 +77,9 @@ $$
 
 $$R_h' = R_h + K \cdot \text{MoV} \cdot (S_h - E_h), \qquad \text{MoV} = (\lvert g_h - g_a \rvert + 1)^{0.4}$$
 
-The MoV-multiplier idea is inspired by FiveThirtyEight's sports-Elo methodology — see [How We Calculate NBA Elo Ratings][ref-538] for the canonical writeup; our specific exponent of $0.4$ differs from 538's NBA formula but is in the same family and dampens the effect of blowouts while still rewarding decisive wins. Adapting Elo from chess to football match prediction is well-studied — see [Using ELO ratings for match result prediction in association football][ref-hvattum] for a validation against bookmaker odds. The hyperparameters in the table below follow community sports-Elo conventions (ClubElo / 538-style) rather than any single paper's exact tuning. For every fixture (including upcoming), we stamp the **pre-match** Elo of both sides (`elo_h_pre`, `elo_a_pre`) so it can be used as a leakage-free feature.
+The MoV-multiplier idea is inspired by FiveThirtyEight's sports-Elo methodology — see [How We Calculate NBA Elo Ratings][ref-538] for the canonical writeup; our specific exponent of $0.4$ differs from 538's NBA formula but is in the same family and dampens the effect of blowouts while still rewarding decisive wins. Adapting Elo from chess to football match prediction is well-studied — see [Using ELO ratings for match result prediction in association football][ref-hvattum] for a validation against bookmaker odds. The fallback hyperparameters below follow community sports-Elo conventions; ClubElo applies its own tuning, so the replay only kicks in for sparse rows.
 
-| Hyperparameter | Value |
+| Hyperparameter (fallback only) | Value |
 |---|---|
 | K-factor | 20 |
 | Home-field advantage (HFA) | 60 Elo |
@@ -87,11 +87,16 @@ The MoV-multiplier idea is inspired by FiveThirtyEight's sports-Elo methodology 
 
 ### 2.2 Rolling team and player metrics
 
-For the **match** model, we aggregate player histories into per-(team, GW) sums of xG, xGA, GF, and GA, and roll them forward at three windows $w \in \{3, 5, 10\}$, always **shifted by one GW** so training features for fixture at GW $t$ only use information available before GW $t$:
+For the **match** model, two stat families are rolled forward at $w \in \{3, 5, 10\}$ for the FPL-derived block and at $w = 5$ for the Opta block, always **shifted by one GW** so features for fixture at GW $t$ only use information available before GW $t$:
 
 $$\overline{xG}_{T,t}^{(w)} = \frac{1}{w} \sum_{k=t-w}^{t-1} xG_{T,k}$$
 
-For the **points** model, each player row uses lagged minutes $m_{i,t-1}$, $m_{i,t-2}$, $m_{i,t-3}$ and 5- and 10-GW rolling per-player means of underlying metrics (xG, xA, xGI, BPS, ICT, saves, CBI, tackles, recoveries, pts), plus context pulled from the fixture join: `is_home`, `opp_xg_5`, `opp_xga_5`, `opp_elo`, `own_elo`, and `elo_gap`. Set-piece and penalty-taker flags come directly from the FPL API.
+| Source | Stats |
+|---|---|
+| Aggregated FPL `history` (per-team, per-GW sums) | xG, xGA, GF, GA |
+| Opta team-level on `fixtures.csv` (one row per side per match) | true Opta xG (`oxg`), big chances (`obc`), total shots (`osh`), and each conceded counterpart |
+
+For the **points** model, each player row uses lagged minutes $m_{i,t-1}$, $m_{i,t-2}$, $m_{i,t-3}$ and 5- and 10-GW rolling per-player means of underlying metrics (xG, xA, xGI, BPS, ICT, saves, CBI, tackles, recoveries) plus six per-player Opta stats from `playermatchstats.csv` aggregated to per-(player, GW) sums first (Opta xG `oxg`, Opta xA `oxa`, chances created `occ`, touches in opposition box `otob`, total shots `osh`, successful dribbles `odrib`). Fixture-side context is pulled from the match-feature join: `is_home`, `opp_xg_5`, `opp_xga_5`, `opp_elo`, `own_elo`, `elo_gap`. Set-piece and penalty-taker flags come from the FPL playerstats. Rolling `total_points` is intentionally excluded — rolling it creates a feedback loop where premiums with one bad recent GW project lower indefinitely; underlying xG/xA/ICT carry the form signal without that pathology.
 
 ---
 
@@ -149,7 +154,7 @@ FPL points per player per GW are discrete, heavy-tailed, and bimodal (zero for d
 | q50 (median EV) | Primary objective μ — robust to heavy right tail |
 | q90 (ceiling) | Triple Captain timing, variance estimate |
 
-We therefore train three independent XGBoost regressors using the `reg:quantileerror` objective with $\alpha \in \{0.10, 0.50, 0.90\}$, which directly minimizes the pinball loss from [Regression Quantiles][ref-koenker]:
+We therefore train **per-position** XGBoost regressors — one model per (position $\times$ quantile) cell, $4 \times 3 = 12$ boosters total — using the `reg:quantileerror` objective with $\alpha \in \{0.10, 0.50, 0.90\}$, which directly minimizes the pinball loss from [Regression Quantiles][ref-koenker]:
 
 $$
 \mathcal{L}_\alpha(y, \hat{y}) = \begin{cases}
@@ -159,6 +164,8 @@ $$
 $$
 
 Target: raw FPL `total_points` per player per GW. **This subsumes every scoring rule end-to-end.** The model learns goal points, assist points, clean-sheet bonuses, defensive-action bonus thresholds, BPS, and all negative deductions jointly from the data; there is no hand-coded scoring table.
+
+The single shared model previously regressed premium FWDs toward the mid-tier population mean — scoring distributions differ structurally per position (GKs save, DEFs collect CS bonuses, MIDs score+assist, FWDs convert) so position one-hots alone aren't enough at this data scale. Per-position models break the population-mean trap, with the trade-off that each subset is small (~3k rows for FWDs) and the q90 booster is sensitive to outliers — addressed with strong regularization (`max_depth=3`, `min_child_weight=30`, `reg_alpha=0.5`, `reg_lambda=2.0`) and a sanity ceiling that clips final predictions at 25 (a credible single-GW boom: hat-trick + assist + bonus).
 
 ### 4.2 Post-hoc non-crossing
 
@@ -187,6 +194,14 @@ $$\hat{\sigma}^2_{i,t} \approx \left( \frac{\hat{q}^{(i,t)}_{90} - \hat{q}^{(i,t
 
 This is lighter than a full Monte-Carlo covariance estimate (which the linear CBC solver could not consume anyway) but preserves the core signal: players with wide quantile spreads are penalized more heavily in the squad objective.
 
+### 4.5 Captaincy score
+
+Captaincy is a separate decision from XI selection: the optimizer's captain term contributes `cap_xp · c_{i,t}` independently of `μ · s_{i,t}`. Pure $\hat{q}_{90}$ as the captain reward over-weighted ceiling and crowned low-mean / high-variance players over high-mean MIDs with comparable upside. We anchor the captain reward on the median EV and add a fraction of the upside premium:
+
+$$\text{cap\_xp}^{(i,t)} = \hat{q}^{(i,t)}_{50} + \alpha \cdot \bigl(\hat{q}^{(i,t)}_{90} - \hat{q}^{(i,t)}_{50}\bigr), \qquad \alpha = 0.3$$
+
+Mean is the dominant signal; ceiling is a tiebreaker among similar-mean candidates. The `CAP_UPSIDE_WEIGHT` constant in [src/fpl_engine.py](../src/fpl_engine.py) is the tunable knob — lower it (e.g. 0.2) for safer captains, raise it (0.5+) for more boom-chasing.
+
 ---
 
 ## 5. Combinatorial Optimization
@@ -211,13 +226,13 @@ For the cold-start solve, $x_{i,t}$ collapses to a single $x_i$ (no transfers ye
 
 ### 5.2 Objective
 
-$$\max \sum_{t=t_0}^{t_0 + H - 1} \sum_{i=1}^{N} \Bigl[\, \mu_{i,t}\, s_{i,t} \;+\; b \cdot \mu_{i,t}\, (x_{i,t} - s_{i,t}) \;+\; \mu_{i,t}\, c_{i,t} \;-\; \nu\, \hat{\sigma}^2_{i,t}\, x_{i,t} \;+\; \eta\, \mu_{i,t}\, (1 - \text{EO}_i)\, x_{i,t} \,\Bigr] \;-\; \sum_{t} 4\, h_t$$
+$$\max \sum_{t=t_0}^{t_0 + H - 1} \sum_{i=1}^{N} \Bigl[\, \mu_{i,t}\, s_{i,t} \;+\; b \cdot \mu_{i,t}\, (x_{i,t} - s_{i,t}) \;+\; \kappa_{i,t}\, c_{i,t} \;-\; \nu\, \hat{\sigma}^2_{i,t}\, x_{i,t} \;+\; \eta\, \mu_{i,t}\, (1 - \text{EO}_i)\, x_{i,t} \,\Bigr] \;-\; \sum_{t} 4\, h_t$$
 
 | Term | Role |
 |---|---|
 | $\mu_{i,t}\, s_{i,t}$ | Starter expected points |
 | $b \cdot \mu_{i,t}\, (x_{i,t} - s_{i,t})$ | Bench auto-sub EV ($b = 0.15$) |
-| $\mu_{i,t}\, c_{i,t}$ | Captain double (added on top of starter term) |
+| $\kappa_{i,t}\, c_{i,t}$ | Captain reward, $\kappa_{i,t} = \text{cap\_xp}^{(i,t)}$ from §4.5 |
 | $-\nu\, \hat{\sigma}^2_{i,t}\, x_{i,t}$ | Risk penalty (diagonal Markowitz) |
 | $\eta\, \mu_{i,t}\, (1 - \text{EO}_i)\, x_{i,t}$ | Differential / EO tilt (zero by default) |
 | $-4\, h_t$ | Hit cost |
@@ -241,9 +256,9 @@ $$\sum_{i\,:\,\text{club}(i) = k} x_{i,t} \leq 3 \quad \forall k, \qquad \sum_i 
 
 where $B_t$ equals the previous squad value plus uninvested bank. Starting XI and captain:
 
-$$\sum_i s_{i,t} = 11, \qquad \sum_i c_{i,t} = 1, \qquad c_{i,t} \leq s_{i,t} \leq x_{i,t}$$
+$$\sum_i s_{i,t} = 11, \qquad \sum_i c_{i,t} = 1, \qquad c_{i,t} \leq s_{i,t} \leq x_{i,t}, \qquad c_{i,t} = 0 \;\; \forall\, i \text{ s.t. } \text{pos}(i) \in \{1, 2\}$$
 
-Formation minima — exactly 1 GK starts, at least 3 DEF, at least 2 MID, at least 1 FWD:
+The trailing term enforces a **MID/FWD-only captaincy rule** — defender booms (CS + goal) are correlated with team performance, so doubling them leaks rank-EV; uncorrelated upside lives in the attack. Formation minima — exactly 1 GK starts, at least 3 DEF, at least 2 MID, at least 1 FWD:
 
 $$\sum_{i\,:\,\text{pos}(i) = 1} s_{i,t} = 1, \qquad \sum_{i\,:\,\text{pos}(i) = p} s_{i,t} \geq r_p$$
 
@@ -277,7 +292,7 @@ Lives in [src/chips.py](../src/chips.py). Chip activation is a convex function o
 
 | Chip | Heuristic |
 |---|---|
-| **Triple Captain** | Pick the GW and owned player maximizing single-GW median EV: $t^{\star},\, i^{\star} = \arg\max_{t,\, i \in \text{squad}}\, \hat{q}^{(i,t)}_{50}$ |
+| **Triple Captain** | Pick the GW and owned MID/FWD maximizing the captaincy score from §4.5: $t^{\star},\, i^{\star} = \arg\max_{t,\, i \in \text{squad},\, \text{pos}(i) \in \{3, 4\}}\, \text{cap\_xp}^{(i,t)}$ |
 | **Bench Boost** | Pick the GW with the highest total bench EV: $t^{\star} = \arg\max_{t}\, \sum_{i \in \text{bench}} \hat{q}^{(i,t)}_{50}$ |
 | **Free Hit** | Pick the GW with the most teams blanking: $t^{\star} = \arg\max_{t}\, \lvert \{ k : k \text{ blanks at } t \} \rvert$ |
 | **Wildcard** | Trigger if the RHC proposes ≥ 4 transfers IN or ≥ 2 hits — the MILP's willingness to pay hits is a proxy signal that the current squad is far from optimal. |
@@ -290,17 +305,18 @@ Lives in [src/chips.py](../src/chips.py). Chip activation is a convex function o
 fpl-ml-manager/
 ├── src/
 │   ├── main.py                  # Orchestrator + markdown report writer
-│   ├── data_loader.py           # FPL API fetcher
-│   ├── features.py              # Elo + rolling team/player features
+│   ├── data_loader.py           # FPL-Core-Insights CSV loader + live FPL API price overlay
+│   ├── features.py              # ClubElo + rolling team/player + per-player Opta features
 │   ├── train_match_model.py     # Poisson goals + DC τ + analytic CS
-│   ├── train_points_model.py    # Quantile XGBoost (q10/q50/q90)
+│   ├── train_points_model.py    # Per-position Quantile XGBoost (12 boosters)
 │   ├── fpl_engine.py            # Inference engine, projection frame builder
 │   ├── optimizer.py             # MILP squad + XI + captain, RHC transfers
 │   └── chips.py                 # TC / BB / FH / WC heuristics
 ├── data/
 │   ├── players.csv, teams.csv, fixtures.csv, history.csv
+│   ├── .fpl_ci_cache/                    # raw FPL-CI per-GW snapshots (cache only)
 │   ├── xgb_home_goals.json, xgb_away_goals.json
-│   ├── xgb_points_q10.json, xgb_points_q50.json, xgb_points_q90.json
+│   ├── xgb_points_q{10,50,90}_p{1,2,3,4}.json   # 4 positions × 3 quantiles
 │   └── processed/
 │       ├── lineup.md            # Weekly markdown report (generated)
 │       └── squad_snapshot.csv   # Carried state for next RHC pass
@@ -352,7 +368,8 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 - **Price-change prediction.** Model overnight price deltas from `transfers_in_event` / `transfers_out_event` to time transfers before price moves and preserve squad value over the season.
 - **Set-piece and manager regime changes.** Embedding-based detection of regime breaks (new manager, new set-piece taker) that invalidate historical rolling features.
 - **Learned chip scheduler.** Re-formulate chip activation as a jointly-solved MILP extension rather than a post-hoc heuristic.
-- **External feature source.** Migrate from the live FPL API to the [olbauday/FPL-Core-Insights](https://www.kaggle.com/datasets/olbauday/fpl-core-insights) dataset for Opta-like stats and ClubElo ratings.
+- **Multi-season training.** Once FPL-Core-Insights backfills 2024-25 with per-GW player snapshots, extend training beyond a single season to reduce variance on per-position quantile predictions.
+- **Status / availability model.** The current `chance_of_playing_next_round` haircut is a single multiplier; a learned availability model would handle partial rotation, fixture congestion, and load management.
 
 ---
 
@@ -380,9 +397,11 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 - [Model Predictive Control: Recent Developments and Future Promise][ref-mpc] — Mayne, *Automatica* 2014. Modern survey of MPC including stochastic/economic variants; canonical reference for the Receding Horizon Control structure used here.
 - [PuLP: A Linear Programming Toolkit for Python][ref-pulp] — Mitchell, O'Sullivan & Dunning, 2011. Modeling layer over the COIN-OR CBC solver used here.
 
-**Data source**
+**Data sources**
 
-- [Fantasy Premier League Public API][ref-fpl] — Premier League. Undocumented but stable at `https://fantasy.premierleague.com/api/`. Endpoints used: `bootstrap-static/`, `fixtures/`, `element-summary/{id}/`.
+- [olbauday/FPL-Core-Insights][ref-fpl-ci] — primary dataset. CSVs combining the FPL API + Opta-like per-match stats + ClubElo ratings, refreshed twice daily. Used files: `teams.csv`, `players.csv`, `By Gameweek/GW{n}/{fixtures, playerstats, player_gameweek_stats, playermatchstats}.csv`, `gameweek_summaries.csv`.
+- [Fantasy Premier League Public API][ref-fpl] — live overlay. Used only for the `bootstrap-static/` endpoint to refresh current-GW prices, ownership, status, and `chance_of_playing_next_round` (FPL-CI lags by up to 12h).
+- [ClubElo][ref-clubelo] — Elo ratings exposed on FPL-CI's fixtures.csv (`home_team_elo`, `away_team_elo`).
 
 [ref-xgboost]: https://arxiv.org/abs/1603.02754
 [ref-dc]: https://www.ajbuckeconbikesail.net/wkpapers/Airports/MVPoisson/soccer_betting.pdf
@@ -395,12 +414,14 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 [ref-hvattum]: https://www.sciencedirect.com/science/article/abs/pii/S0169207009001708
 [ref-pulp]: https://github.com/coin-or/Cbc
 [ref-fpl]: https://fantasy.premierleague.com/api/
+[ref-fpl-ci]: https://github.com/olbauday/FPL-Core-Insights
+[ref-clubelo]: https://clubelo.com
 
 ---
 
 ## Data and Credit
 
-Live data is pulled from the [Fantasy Premier League Public API][ref-fpl]. All credit for the underlying match data, player metadata, and points scoring goes to the Premier League and its data providers (Opta for the underlying event data). Use of the API is subject to its own terms — this project consumes only public, read-only endpoints and is not affiliated with or endorsed by the Premier League.
+Primary data comes from the [olbauday/FPL-Core-Insights][ref-fpl-ci] dataset, which combines the [Fantasy Premier League Public API][ref-fpl] with manually curated Opta-like per-match stats and [ClubElo][ref-clubelo] ratings — all credit goes to those upstream providers. A live FPL API call (`bootstrap-static/`) is used as a thin overlay for current-GW prices and injury status. Use of these sources is subject to each provider's own terms; this project consumes only public, read-only endpoints / files and is not affiliated with or endorsed by the Premier League, ClubElo, or the FPL-Core-Insights maintainers.
 
 ---
 
@@ -408,4 +429,4 @@ Live data is pulled from the [Fantasy Premier League Public API][ref-fpl]. All c
 
 TBD.
 
-> **Note:** The FPL API and any Opta-derived metrics surfaced through it are governed by their own separate terms.
+> **Note:** The FPL API, FPL-Core-Insights dataset, and ClubElo data are governed by their own separate terms.
