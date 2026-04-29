@@ -34,16 +34,19 @@ def _md_table(df: pd.DataFrame) -> str:
 
 
 def _current_gw(fixtures: pd.DataFrame) -> int:
-    """Next unfinished gameweek; defaults to 38 if season complete."""
-    up = fixtures[~fixtures["finished"]]
-    return int(up["event"].min()) if not up.empty else 38
+    """Smallest GW that's <50% finished — robust to lingering postponed matches in past GWs."""
+    g = fixtures.groupby("event")["finished"].agg(sum_="sum", size_="size")
+    upcoming = g[(g["sum_"] / g["size_"]) < 0.5]
+    return int(upcoming.index.min()) if not upcoming.empty else 38
 
 
 def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) -> None:
     """Trains any missing match / points model artifacts."""
     if not all((DATA_DIR / f).exists() for f in ("xgb_home_goals.json", "xgb_away_goals.json")):
         train_match_models(fx, hist, teams)
-    if not all((DATA_DIR / f"xgb_points_q{q:02d}.json").exists() for q in (10, 50, 90)):
+    points_files = [f"xgb_points_q{q:02d}_p{p}.json"
+                    for q in (10, 50, 90) for p in (1, 2, 3, 4)]
+    if not all((DATA_DIR / f).exists() for f in points_files):
         train_points_models()
 
 

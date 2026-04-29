@@ -9,6 +9,8 @@ import pulp
 SQUAD_COUNTS = {1: 2, 2: 5, 3: 5, 4: 3}
 MIN_STARTERS = {1: 1, 2: 3, 3: 2, 4: 1}
 SQUAD_SIZE, XI_SIZE, MAX_PER_CLUB = 15, 11, 3
+# DEF booms (CS+goal) are correlated with team performance; MID/FWD upside is uncorrelated.
+CAPTAIN_POSITIONS = {3, 4}
 
 
 def _gws(proj: pd.DataFrame) -> list[int]:
@@ -20,7 +22,7 @@ def _add_core(
     prob: pulp.LpProblem, proj: pd.DataFrame, ids: list[int],
     s: dict, c: dict, x_of: Callable, gws: list[int],
 ) -> None:
-    """XI size, captain size, GK quota, formation minima, captain-must-start."""
+    """XI size, captain size, GK quota, formation minima, captain-must-start, captain pos."""
     for t in gws:
         prob += pulp.lpSum(s[i][t] for i in ids) == XI_SIZE
         prob += pulp.lpSum(c[i][t] for i in ids) == 1
@@ -30,6 +32,8 @@ def _add_core(
         for i in ids:
             prob += s[i][t] <= x_of(i, t)
             prob += c[i][t] <= s[i][t]
+            if int(proj.loc[i, "pos_id"]) not in CAPTAIN_POSITIONS:
+                prob += c[i][t] == 0
 
 
 def _extract(
@@ -44,9 +48,9 @@ def _extract(
         squad = {i for i in ids if x[i].varValue and x[i].varValue > 0.5}
     xi = {i for i in squad if s[i][t0].varValue and s[i][t0].varValue > 0.5}
     cap = next((i for i in xi if c[i][t0].varValue and c[i][t0].varValue > 0.5), None)
-    non_cap = [i for i in xi if i != cap]
-    xp_col = f"xp_{t0}"
-    vice = max(non_cap, key=lambda i: float(proj.loc[i, xp_col])) if non_cap else None
+    non_cap = [i for i in xi if i != cap and int(proj.loc[i, "pos_id"]) in CAPTAIN_POSITIONS]
+    cap_col = f"cap_xp_{t0}" if f"cap_xp_{t0}" in proj.columns else f"xp_{t0}"
+    vice = max(non_cap, key=lambda i: float(proj.loc[i, cap_col])) if non_cap else None
     return squad, xi, cap, vice
 
 
@@ -74,9 +78,10 @@ def solve_initial_squad(
     for t in gws:
         for i in ids:
             xp = float(proj.loc[i, f"xp_{t}"])
+            cap_xp = float(proj.loc[i, f"cap_xp_{t}"])
             var = float(proj.loc[i, f"var_{t}"])
             eo = float(proj.loc[i, "eo"])
-            obj += xp * s[i][t] + bench_weight * xp * (x[i] - s[i][t]) + xp * c[i][t]
+            obj += xp * s[i][t] + bench_weight * xp * (x[i] - s[i][t]) + cap_xp * c[i][t]
             obj += -(lambda_var * var / n_gw) * x[i]
             obj += (lambda_eo * xp * (1.0 - eo) / n_gw) * x[i]
     prob += obj
@@ -128,9 +133,10 @@ def solve_rhc_transfers(
     for t in gws:
         for i in ids:
             xp = float(proj.loc[i, f"xp_{t}"])
+            cap_xp = float(proj.loc[i, f"cap_xp_{t}"])
             var = float(proj.loc[i, f"var_{t}"])
             eo = float(proj.loc[i, "eo"])
-            obj += xp * s[i][t] + bench_weight * xp * (x[i][t] - s[i][t]) + xp * c[i][t]
+            obj += xp * s[i][t] + bench_weight * xp * (x[i][t] - s[i][t]) + cap_xp * c[i][t]
             obj += -lambda_var * var * x[i][t]
             obj += lambda_eo * xp * (1.0 - eo) * x[i][t]
     obj += -pulp.lpSum(4 * hits[t] for t in gws)
