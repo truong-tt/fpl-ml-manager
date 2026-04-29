@@ -1,8 +1,8 @@
 # GW35 Lineup
 
-- **Bank:** £4.8m
+- **Bank:** £6.3m
 - **Hits:** 0
-- **Squad Value:** £95.2m
+- **Squad Value:** £93.7m
 
 ## Starting XI
 
@@ -26,18 +26,18 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Kelleher | BRE | GK | 4.8 | 2.18 | 8.13 |  |
 | Thiaw | NEW | DEF | 5.0 | 2.3 | 9.37 |  |
-| Watkins | AVL | FWD | 8.8 | 1.99 | 7.83 |  |
 | Brobbey | SUN | FWD | 5.3 | 1.74 | 7.04 |  |
+| Solanke | TOT | FWD | 7.3 | 1.24 | 6.22 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Van Hecke | Struijk |
+| Watkins | Solanke |
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW36 — B.Fernandes (+5.6 pts)
-- **Bench Boost:** GW37 (+8.3 pts)
+- **Bench Boost:** GW37 (+7.9 pts)
 - **Free Hit:** GW39 (20 teams blank)
 - **Wildcard:** hold (1 suggested transfers, 0 hits)
