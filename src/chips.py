@@ -30,11 +30,15 @@ def recommend_bench_boost(proj: pd.DataFrame, squad_ids: set[int], xi_ids: set[i
 
 
 def recommend_free_hit(fixtures: pd.DataFrame, current_gw: int, horizon: int) -> dict:
-    """Finds the GW with the most teams blanking inside the horizon."""
-    teams_all = set(fixtures["team_h"].tolist() + fixtures["team_a"].tolist())
+    """Finds the GW with the most teams blanking inside the horizon (current season only)."""
+    fx_curr = fixtures
+    if "season" in fx_curr.columns:
+        from data_loader import SEASON
+        fx_curr = fx_curr[fx_curr["season"] == SEASON]
+    teams_all = set(fx_curr["team_h"].tolist() + fx_curr["team_a"].tolist())
     best = {"gw": None, "blanks": 0}
     for t in range(current_gw, current_gw + horizon):
-        fx = fixtures[fixtures["event"] == t]
+        fx = fx_curr[fx_curr["event"] == t]
         missing = len(teams_all - set(fx["team_h"].tolist() + fx["team_a"].tolist()))
         if missing > best["blanks"]:
             best = {"gw": t, "blanks": missing}
