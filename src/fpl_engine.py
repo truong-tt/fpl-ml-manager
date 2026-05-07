@@ -1,4 +1,4 @@
-"""FPLEngine: builds the per-player, per-GW projection frame consumed by the optimizer."""
+"""FPLEngine. Build per-player per-GW projection frame for optimizer."""
 from __future__ import annotations
 
 from typing import Any
@@ -12,11 +12,11 @@ from train_points_model import load_points_models, predict_quantiles
 
 
 class FPLEngine:
-    """Loads trained models and produces a wide projection frame for the optimizer."""
+    """Load trained models. Produce wide projection frame for optimizer."""
 
     def __init__(self, fixtures: pd.DataFrame, history: pd.DataFrame,
                  players: pd.DataFrame, teams: pd.DataFrame) -> None:
-        """Stores inputs; eagerly loads the quantile points + minutes models."""
+        """Store inputs. Eager load quantile points + minutes models."""
         self.fixtures, self.players, self.teams = fixtures, players, teams
         self.history = history.copy()
         if "season" not in self.history.columns:
@@ -28,10 +28,10 @@ class FPLEngine:
         self.minutes_model = load_minutes_model()
 
     def _latest_rolling(self) -> pd.DataFrame:
-        """Per-player most-recent current-season feature row (one row per player_id).
+        """Per-player most-recent current-season feature row. One row per player_id.
 
-        Filters to SEASON before tail(1) so historical-season rows never become the
-        inference baseline for a player who has not yet appeared in the current season.
+        Filter to SEASON before tail(1). Stop historical-season rows becoming
+        inference baseline for player not yet appeared in current season.
         """
         fx = build_match_features(self.fixtures, self.history, self.teams)
         past = build_player_features(self.history, self.players, fx)
@@ -44,7 +44,7 @@ class FPLEngine:
         return past.sort_values(["player_id", "round"]).groupby("player_id").tail(1).set_index("player_id")
 
     def _inference_rows(self, current_gw: int, horizon: int) -> pd.DataFrame:
-        """One row per (player, upcoming fixture); DGWs naturally yield multiple rows."""
+        """One row per (player, upcoming fixture). DGWs yield multiple rows."""
         latest = self._latest_rolling()
         if latest.empty:
             return pd.DataFrame()
@@ -85,7 +85,7 @@ class FPLEngine:
         return pd.DataFrame(rows)
 
     def build_projections(self, current_gw: int, horizon: int = 5) -> pd.DataFrame:
-        """Returns wide df with xp_{t}, var_{t} per player and convenience totals."""
+        """Return wide df. xp_{t}, var_{t} per player + convenience totals."""
         if self.points_models is None:
             return pd.DataFrame()
         rows = self._inference_rows(current_gw, horizon)
@@ -97,15 +97,15 @@ class FPLEngine:
         pmeta = self.players.set_index("id")
         bad = pmeta["status"].isin(["s", "n", "u"]).to_dict()
         # Learned availability multiplier: predicted minutes / 90 per (player, fixture).
-        # Falls back to 1.0 if the model has not been trained yet.
+        # Fallback 1.0 if model not trained yet.
         if self.minutes_model is not None:
             mins_pred = predict_minutes(self.minutes_model, rows)
         else:
             mins_pred = pd.Series(1.0, index=rows.index)
-        # FPL `chance_of_playing_next_round` is authoritative for the IMMEDIATE next GW
-        # (FPL knows about specific injuries the model cannot infer from history alone).
-        # Use it as a hard upper bound for that GW only — applying it across the horizon
-        # double-counts injuries for weeks the player will likely have recovered.
+        # FPL `chance_of_playing_next_round` authoritative for IMMEDIATE next GW.
+        # FPL knows specific injuries model cannot infer from history alone.
+        # Use as hard upper bound that GW only. Apply across horizon double-counts
+        # injuries for weeks player likely recovered.
         chance = (pd.to_numeric(pmeta["chance_of_playing_next_round"],
                                 errors="coerce").fillna(100.0) / 100.0).to_dict()
         next_gw = rows["fixture_gw"].min()
@@ -115,7 +115,7 @@ class FPLEngine:
             [min(m, h) for m, h in zip(mins_pred.values[is_next], fpl_hint[is_next])],
             index=mins_pred.index[is_next],
         )
-        # Hard-bad statuses ('s' suspended, 'n' not available, 'u' unavailable) zero all GWs.
+        # Hard-bad statuses ('s' suspended, 'n' not available, 'u' unavailable). Zero all GWs.
         bad_mask = rows["player_id"].map(bad).fillna(False).values
         mins_pred.loc[bad_mask] = 0.0
         rows["chance"] = mins_pred.values
@@ -124,11 +124,11 @@ class FPLEngine:
 
         agg = rows.groupby(["player_id", "fixture_gw"], as_index=False).agg(
             q10=("q10", "sum"), q50=("q50", "sum"), q90=("q90", "sum"))
-        # Use std (not variance) so penalty scales linearly with ceiling, not
-        # quadratically - prevents the solver from dodging high-ceiling players.
+        # Use std not variance. Penalty scale linear with ceiling, not quadratic.
+        # Stop solver dodging high-ceiling players.
         agg["variance"] = (agg["q90"] - agg["q10"]) / 2.56
         # Captaincy = mean anchor + small upside premium. Pure q90 crowned
-        # 1.99-mean ceiling players over high-mean MIDs; alpha=0.3 keeps mean dominant.
+        # 1.99-mean ceiling players over high-mean MIDs. alpha=0.3 keeps mean dominant.
         CAP_UPSIDE_WEIGHT = 0.3
         agg["cap_xp"] = agg["q50"] + CAP_UPSIDE_WEIGHT * (agg["q90"] - agg["q50"])
 

@@ -1,4 +1,4 @@
-"""MILP optimizer: 15-man squad + per-GW XI + captain, with RHC transfer planning."""
+"""MILP optimizer. 15-man squad + per-GW XI + captain. RHC transfer plan."""
 from __future__ import annotations
 
 from typing import Any, Callable
@@ -9,12 +9,12 @@ import pulp
 SQUAD_COUNTS = {1: 2, 2: 5, 3: 5, 4: 3}
 MIN_STARTERS = {1: 1, 2: 3, 3: 2, 4: 1}
 SQUAD_SIZE, XI_SIZE, MAX_PER_CLUB = 15, 11, 3
-# DEF booms (CS+goal) are correlated with team performance; MID/FWD upside is uncorrelated.
+# DEF booms (CS+goal) correlated with team performance. MID/FWD upside uncorrelated.
 CAPTAIN_POSITIONS = {3, 4}
 
 
 def _gws(proj: pd.DataFrame) -> list[int]:
-    """Sorted GW list extracted from xp_{t} columns."""
+    """Sorted GW list from xp_{t} columns."""
     return sorted(int(c.split("_")[1]) for c in proj.columns if c.startswith("xp_"))
 
 
@@ -22,7 +22,7 @@ def _add_core(
     prob: pulp.LpProblem, proj: pd.DataFrame, ids: list[int],
     s: dict, c: dict, x_of: Callable, gws: list[int],
 ) -> None:
-    """XI size, captain size, GK quota, formation minima, captain-must-start, captain pos."""
+    """XI size, captain size, GK quota, formation min, captain-must-start, captain pos."""
     for t in gws:
         prob += pulp.lpSum(s[i][t] for i in ids) == XI_SIZE
         prob += pulp.lpSum(c[i][t] for i in ids) == 1
@@ -40,7 +40,7 @@ def _extract(
     proj: pd.DataFrame, ids: list[int], gws: list[int],
     x: dict, s: dict, c: dict, x_per_t: bool,
 ) -> tuple[set[int], set[int], int, int]:
-    """Pulls (squad_ids, xi_ids, captain_id, vice_id) for the first GW in horizon."""
+    """Pull (squad_ids, xi_ids, captain_id, vice_id) for first GW in horizon."""
     t0 = gws[0]
     if x_per_t:
         squad = {i for i in ids if x[i][t0].varValue and x[i][t0].varValue > 0.5}
@@ -59,7 +59,7 @@ def solve_initial_squad(
     lambda_var: float = 0.02, lambda_eo: float = 0.0,
     bench_weight: float = 0.15, time_limit: int = 60,
 ) -> pd.DataFrame:
-    """Cold-start 15-man squad + per-GW XI/captain over the full horizon."""
+    """Cold-start 15-man squad + per-GW XI/captain over full horizon."""
     if proj.empty:
         return pd.DataFrame()
     proj = proj.copy().set_index("id")
@@ -111,7 +111,7 @@ def solve_rhc_transfers(
     bank: float, free_transfers: int, lambda_var: float = 0.02,
     lambda_eo: float = 0.0, bench_weight: float = 0.15, time_limit: int = 180,
 ) -> dict[str, Any]:
-    """Receding-horizon transfer planner; returns this-GW squad / XI / captain / transfers."""
+    """Receding-horizon transfer planner. Return this-GW squad / XI / captain / transfers."""
     if proj.empty:
         return {"status": "empty"}
     proj = proj.copy().set_index("id")
