@@ -1,4 +1,4 @@
-"""GH Actions entrypoint: refresh data, train missing models, solve, write lineup.md."""
+"""GH Actions entrypoint. Refresh data, train missing models, solve, write lineup.md."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,14 +19,14 @@ OUT_DIR = DATA_DIR / "processed"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 HORIZON = 5
-# With linear-std variance penalty (was variance^2), 0.05 is an equivalent
-# scale. Set to 0.0 if the solver still under-invests in premiums.
+# Linear-std variance penalty (was variance^2). 0.05 = equivalent scale.
+# Set 0.0 if solver still under-invests in premiums.
 LAMBDA_VAR, LAMBDA_EO, BENCH_WEIGHT = 0.05, 0.0, 0.15
 POS = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
 
 
 def _md_table(df: pd.DataFrame) -> str:
-    """Renders df as a GitHub-flavored markdown table (no tabulate dep)."""
+    """Render df as GitHub-flavored markdown table. No tabulate dep."""
     cols = list(df.columns)
     head = "| " + " | ".join(str(c) for c in cols) + " |"
     sep = "|" + "|".join(" --- " for _ in cols) + "|"
@@ -35,7 +35,7 @@ def _md_table(df: pd.DataFrame) -> str:
 
 
 def _current_gw(fixtures: pd.DataFrame) -> int:
-    """Smallest GW that's <50% finished — robust to lingering postponed matches in past GWs."""
+    """Smallest GW <50% finished. Robust to lingering postponed matches in past GWs."""
     fx = fixtures
     if "season" in fx.columns:
         fx = fx[fx["season"] == SEASON]
@@ -45,7 +45,7 @@ def _current_gw(fixtures: pd.DataFrame) -> int:
 
 
 def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) -> None:
-    """Trains any missing match / points / minutes model artifacts."""
+    """Train any missing match / points / minutes model artifacts."""
     if not all((DATA_DIR / f).exists() for f in ("xgb_home_goals.json", "xgb_away_goals.json")):
         train_match_models(fx, hist, teams)
     points_files = [f"xgb_points_q{q:02d}_p{p}.json"
@@ -57,7 +57,7 @@ def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) ->
 
 
 def _load_prior() -> tuple[set[int], float, int] | None:
-    """Reads last week's squad snapshot for RHC, or None on cold start."""
+    """Read last week squad snapshot for RHC. None on cold start."""
     snap = OUT_DIR / "squad_snapshot.csv"
     if not snap.exists():
         return None
@@ -67,7 +67,7 @@ def _load_prior() -> tuple[set[int], float, int] | None:
 
 
 def _persist(squad: pd.DataFrame, bank: float, ft: int) -> None:
-    """Saves this GW's snapshot (squad + bank + FT) for next run."""
+    """Save this GW snapshot (squad + bank + FT) for next run."""
     out = squad.copy()
     out["bank"], out["free_transfers"] = bank, ft
     out.to_csv(OUT_DIR / "squad_snapshot.csv", index=False)
@@ -79,7 +79,7 @@ def _render(
     players: pd.DataFrame, teams: pd.DataFrame,
     tc: dict, bb: dict, fh: dict, wc: dict,
 ) -> str:
-    """Renders the weekly lineup + transfers + chips as a single markdown document."""
+    """Render weekly lineup + transfers + chips as single markdown doc."""
     tmap = teams.set_index("team_id")["short_name"].to_dict()
     nmap = players.set_index("id")["web_name"].to_dict()
 
@@ -131,7 +131,7 @@ def _render(
 
 
 def main() -> None:
-    """End-to-end weekly pipeline invoked by the GH Actions workflow."""
+    """End-to-end weekly pipeline. Invoked by GH Actions workflow."""
     refresh_data()
 
     fixtures = pd.read_csv(DATA_DIR / "fixtures.csv")

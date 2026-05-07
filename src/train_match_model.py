@@ -17,7 +17,7 @@ DC_RHO = -0.10
 def train_match_models(
     fixtures: pd.DataFrame, history: pd.DataFrame, teams: pd.DataFrame
 ) -> None:
-    """Trains and serializes home / away goal Poisson regressors."""
+    """Train + serialize home / away goal Poisson regressors."""
     df = build_match_features(fixtures, history, teams)
     past = df[df["finished"] == True].dropna(subset=["team_h_score", "team_a_score"])
     if past.empty:
@@ -31,7 +31,7 @@ def train_match_models(
 
 
 def _dc_tau(x: int, y: int, lh: float, la: float, rho: float = DC_RHO) -> float:
-    """Dixon-Coles τ correction for low scoring outcomes (0-0, 0-1, 1-0, 1-1)."""
+    """Dixon-Coles τ correction. Low scoring outcomes (0-0, 0-1, 1-0, 1-1)."""
     if x == 0 and y == 0: return 1 - lh * la * rho
     if x == 0 and y == 1: return 1 + lh * rho
     if x == 1 and y == 0: return 1 + la * rho
@@ -40,7 +40,7 @@ def _dc_tau(x: int, y: int, lh: float, la: float, rho: float = DC_RHO) -> float:
 
 
 def score_matrix(lh: float, la: float, max_goals: int = 8) -> np.ndarray:
-    """DC-adjusted joint score probability matrix indexed [home_goals, away_goals]."""
+    """DC-adjusted joint score probability matrix. Indexed [home_goals, away_goals]."""
     ph = poisson.pmf(np.arange(max_goals + 1), lh)
     pa = poisson.pmf(np.arange(max_goals + 1), la)
     M = np.outer(ph, pa)
@@ -51,7 +51,7 @@ def score_matrix(lh: float, la: float, max_goals: int = 8) -> np.ndarray:
 
 
 def clean_sheet_probs(lh: float, la: float) -> tuple[float, float]:
-    """Returns (home_CS, away_CS) analytically from the DC score matrix."""
+    """Return (home_CS, away_CS) analytically from DC score matrix."""
     M = score_matrix(lh, la)
     return float(M[:, 0].sum()), float(M[0, :].sum())
 

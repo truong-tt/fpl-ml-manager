@@ -1,7 +1,7 @@
-"""Rolling team / player features. Elo comes from ClubElo (FPL-CI); replay is the fallback.
+"""Rolling team / player features. Elo from ClubElo (FPL-CI). Replay = fallback.
 
-All rolling state is partitioned by `season` to prevent cross-season leakage — a player's
-or team's GW1 row in season N never sees data from season N-1.
+All rolling state partitioned by `season`. Stop cross-season leakage. Player or
+team GW1 row in season N never sees data from season N-1.
 """
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import numpy as np
 import pandas as pd
 
 TEAM_WINDOWS = [3, 5, 10]
-# Used only when FPL-CI home_team_elo/away_team_elo are absent or null.
+# Used only when FPL-CI home_team_elo/away_team_elo absent or null.
 INIT_ELO, K, HFA = 1500.0, 20.0, 60.0
 
 
 def _ensure_season(df: pd.DataFrame) -> pd.DataFrame:
-    """Backfills `season` col with a single-season default for callers passing legacy frames."""
+    """Backfill `season` col with single-season default. For legacy frames."""
     if "season" not in df.columns:
         df = df.copy()
         df["season"] = "current"
@@ -22,7 +22,7 @@ def _ensure_season(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _elo_replay(fixtures: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
-    """Chronological Elo replay over finished fixtures (fallback path). Resets per season."""
+    """Chronological Elo replay over finished fixtures. Fallback path. Reset per season."""
     sort_col = "kickoff_time" if "kickoff_time" in fixtures.columns else "event"
     out = fixtures.sort_values(["season", sort_col]).copy().reset_index(drop=True)
     out["elo_h_pre"] = 0.0
@@ -45,7 +45,7 @@ def _elo_replay(fixtures: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
 
 
 def elo_snapshot_series(fixtures: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
-    """Stamps pre-match Elo (ClubElo if present on fixtures.csv, replay otherwise)."""
+    """Stamp pre-match Elo. ClubElo if on fixtures.csv, else replay."""
     fixtures = _ensure_season(fixtures)
     has_elo = "home_team_elo" in fixtures.columns and "away_team_elo" in fixtures.columns
     if not has_elo:
@@ -81,7 +81,7 @@ def _rolling_team_stats(history: pd.DataFrame) -> pd.DataFrame:
     return g
 
 
-# Match-level Opta from fixtures.csv — true on-the-ball xG, distinct from
+# Match-level Opta from fixtures.csv. True on-the-ball xG. Distinct from
 # _rolling_team_stats which sums per-player FPL xG.
 OPTA_STATS = [
     ("expected_goals_xg", "oxg"),
@@ -93,7 +93,7 @@ OPTA_DEFAULTS = {"oxg": 1.2, "oxga": 1.2, "obc": 1.5, "obca": 1.5, "osh": 11.0, 
 
 
 def _rolling_fixture_team_stats(fixtures: pd.DataFrame) -> pd.DataFrame:
-    """Per-(team, season, GW) rolling Opta stats; each fixture contributes a row per side."""
+    """Per-(team, season, GW) rolling Opta stats. Each fixture = row per side."""
     needed = [f"{p}_{r}" for r, _ in OPTA_STATS for p in ("home", "away")]
     if not all(c in fixtures.columns for c in needed):
         return pd.DataFrame()
@@ -126,7 +126,7 @@ def _rolling_fixture_team_stats(fixtures: pd.DataFrame) -> pd.DataFrame:
 def build_match_features(
     fixtures: pd.DataFrame, history: pd.DataFrame, teams: pd.DataFrame
 ) -> pd.DataFrame:
-    """Joins team rolling stats + Elo diff onto every fixture row."""
+    """Join team rolling stats + Elo diff onto every fixture row."""
     fx = elo_snapshot_series(fixtures, teams)
     fx = _ensure_season(fx)
     history = _ensure_season(history)
@@ -167,7 +167,7 @@ def build_match_features(
 
 
 def match_feature_cols() -> list[str]:
-    """Canonical feature-column order for the match model."""
+    """Canonical feature-column order for match model."""
     cols = [f"{s}_{stat}_{w}"
             for s in ("h", "a") for w in TEAM_WINDOWS for stat in ("xg", "xga", "gf", "ga")]
     opta_short = [c for _, c in OPTA_STATS] + [f"{c}a" for _, c in OPTA_STATS]
@@ -179,10 +179,10 @@ def match_feature_cols() -> list[str]:
 def build_player_features(
     history: pd.DataFrame, players: pd.DataFrame, fixture_feats: pd.DataFrame
 ) -> pd.DataFrame:
-    """Per (player, past GW) training rows for the points model. Target = total_points.
+    """Per (player, past GW) training rows for points model. Target = total_points.
 
-    Rolling and lag features are partitioned by (player_id, season) so a player's first
-    GW in a new season starts cold (no prior-season form leakage).
+    Rolling/lag features partitioned by (player_id, season). Player first GW in
+    new season starts cold. No prior-season form leakage.
     """
     if history.empty:
         return pd.DataFrame()
@@ -192,8 +192,8 @@ def build_player_features(
     for lag in (1, 2, 3):
         df[f"lag{lag}_min"] = df.groupby(["player_id", "season"])["minutes"].shift(lag).fillna(0.0)
 
-    # `total_points` is intentionally excluded — rolling it creates a feedback loop
-    # where a premium's bad recent GW projects them lower forever.
+    # `total_points` excluded on purpose. Rolling = feedback loop where premium
+    # bad recent GW projects them lower forever.
     roll_map = {"expected_goals": "xg", "expected_assists": "xa",
                 "expected_goal_involvements": "xgi", "bps": "bps", "ict_index": "ict",
                 "saves": "saves", "clearances_blocks_interceptions": "cbi",
@@ -216,7 +216,7 @@ def build_player_features(
     ]].rename(columns={"id": "player_id", "element_type": "pos_id", "team": "team_id"})
     df = df.merge(meta, on="player_id", how="left")
     df["pos_id"] = df["pos_id"].fillna(3).astype(int)
-    # One-hot — treating pos_id as ordinal conflates GK<->FWD scoring distributions.
+    # One-hot. Treating pos_id as ordinal conflates GK<->FWD scoring distributions.
     for p in (1, 2, 3, 4):
         df[f"pos_{p}"] = (df["pos_id"] == p).astype(int)
     df["is_pen_taker"] = (df["penalties_order"].fillna(0) == 1).astype(int)
@@ -237,7 +237,7 @@ def build_player_features(
 
 
 def points_feature_cols() -> list[str]:
-    """Canonical feature-column order for the quantile points model."""
+    """Canonical feature-column order for quantile points model."""
     base = ["pos_1", "pos_2", "pos_3", "pos_4",
             "is_home", "is_pen_taker", "is_fk_taker",
             "lag1_min", "lag2_min", "lag3_min",
@@ -250,11 +250,11 @@ def points_feature_cols() -> list[str]:
 
 
 def minutes_feature_cols() -> list[str]:
-    """Feature subset for the availability / expected-minutes model.
+    """Feature subset for availability / expected-minutes model.
 
-    Drops set-piece flags and per-action rolling stats (cbi, tkl, saves) — these
-    correlate strongly with playing time but are circular for predicting it. Keeps
-    lag/roll minutes, form proxies (xg/xa/ict), position, and fixture-side context.
+    Drop set-piece flags and per-action rolling stats (cbi, tkl, saves). Strong
+    correlation with playing time but circular for predicting it. Keep lag/roll
+    minutes, form proxies (xg/xa/ict), position, fixture-side context.
     """
     return ["pos_1", "pos_2", "pos_3", "pos_4",
             "is_home",
