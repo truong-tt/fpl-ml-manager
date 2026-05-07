@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 *.pyo
 data/
+data_backup/
 .venv/
 .idea/
 .env

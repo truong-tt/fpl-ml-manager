@@ -124,15 +124,19 @@ class FPLEngine:
 
         agg = rows.groupby(["player_id", "fixture_gw"], as_index=False).agg(
             q10=("q10", "sum"), q50=("q50", "sum"), q90=("q90", "sum"))
+        # Pearson-Tukey 3-quantile mean estimator. q50 is median; FPL points
+        # right-skewed (most weeks 1-2, hauls 8-15) so median << mean. Use mean
+        # for XP so per-GW totals match expected scoring, not median scoring.
+        agg["mean_xp"] = (agg["q10"] + 4.0 * agg["q50"] + agg["q90"]) / 6.0
         # Use std not variance. Penalty scale linear with ceiling, not quadratic.
         # Stop solver dodging high-ceiling players.
         agg["variance"] = (agg["q90"] - agg["q10"]) / 2.56
         # Captaincy = mean anchor + small upside premium. Pure q90 crowned
         # 1.99-mean ceiling players over high-mean MIDs. alpha=0.3 keeps mean dominant.
         CAP_UPSIDE_WEIGHT = 0.3
-        agg["cap_xp"] = agg["q50"] + CAP_UPSIDE_WEIGHT * (agg["q90"] - agg["q50"])
+        agg["cap_xp"] = agg["mean_xp"] + CAP_UPSIDE_WEIGHT * (agg["q90"] - agg["mean_xp"])
 
-        xp = agg.pivot(index="player_id", columns="fixture_gw", values="q50").fillna(0.0)
+        xp = agg.pivot(index="player_id", columns="fixture_gw", values="mean_xp").fillna(0.0)
         xp.columns = [f"xp_{int(c)}" for c in xp.columns]
         var = agg.pivot(index="player_id", columns="fixture_gw", values="variance").fillna(0.0)
         var.columns = [f"var_{int(c)}" for c in var.columns]

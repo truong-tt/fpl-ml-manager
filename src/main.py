@@ -87,7 +87,9 @@ def _render(
     d["Team"] = d["team_id"].map(tmap)
     d["Pos"] = d["pos_id"].map(POS)
     d["Price"] = d["price"].round(1)
-    d["XP(1)"] = d["next_gw_xp"].round(2)
+    # Captain row shows XP doubled so XI column-sum reflects actual GW total.
+    cap_mult_1 = d["id"].map({cap: 2.0}).fillna(1.0)
+    d["XP(1)"] = (d["next_gw_xp"] * cap_mult_1).round(2)
     d["XP(H)"] = d["horizon_xp"].round(2)
     d["Role"] = ""
     d.loc[d["id"] == cap, "Role"] = "(C)"
@@ -97,12 +99,14 @@ def _render(
 
     xi_df = d[d["id"].isin(xi)].sort_values("pos_id")[cols]
     bench_df = d[~d["id"].isin(xi)].sort_values("pos_id")[cols]
+    xi_total_xp = float(xi_df["XP(1)"].sum())
 
     lines = [
         f"# GW{gw} Lineup", "",
         f"- **Bank:** £{bank:.1f}m",
         f"- **Hits:** -{hits * 4} pts" if hits else "- **Hits:** 0",
         f"- **Squad Value:** £{squad['price'].sum():.1f}m",
+        f"- **XI Expected Points (incl. captain):** {xi_total_xp:.1f}",
         "", "## Starting XI", "", _md_table(xi_df),
         "", "## Bench", "", _md_table(bench_df),
     ]
