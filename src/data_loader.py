@@ -1,4 +1,12 @@
-"""FPL data loader sourced from FPL-Core-Insights CSVs, with a thin live-API price overlay."""
+"""FPL data loader. Multi-season ingest from FPL-Core-Insights + live FPL API price overlay.
+
+Current season uses By-Gameweek slicing. Historical seasons use entity-folder layout
+(2024-2025 onwards) with per-GW deltas reconstructed from cumulative `playerstats.csv`
+plus per-match `playermatchstats.csv` joined to `matches.csv` for gameweek attribution.
+
+Cross-season joins are stable on FPL `player_code` and `team.code`. Players or teams
+absent from the current season pool (left PL, relegated) are dropped from history.
+"""
 from __future__ import annotations
 
 import time
@@ -7,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 
+import numpy as np
 import pandas as pd
 import requests
 
@@ -14,6 +23,8 @@ import requests
 FPL_CI_REF = "main"
 FPL_CI_BASE = f"https://raw.githubusercontent.com/olbauday/FPL-Core-Insights/{FPL_CI_REF}/data"
 SEASON = "2025-2026"
+HISTORICAL_SEASONS: list[str] = ["2024-2025"]
+ALL_SEASONS = HISTORICAL_SEASONS + [SEASON]
 
 FPL_API_BASE = "https://fantasy.premierleague.com/api/"
 
@@ -32,7 +43,7 @@ HIST_NUM = [
 # Excludes player-meta fields that live in players.csv — merging both in
 # features.py would collide on penalties_order, status, etc.
 HIST_OUTPUT_COLS = [
-    "player_id", "round", "fixture", "opponent_team", "team",
+    "player_id", "round", "season", "fixture", "opponent_team", "team",
     "minutes", "goals_scored", "goals_conceded", "assists",
     "expected_goals", "expected_assists",
     "expected_goal_involvements", "expected_goals_conceded",
@@ -60,6 +71,17 @@ POSITION_TO_ELEMENT_TYPE = {
     "Defender": 2, "DEF": 2,
     "Midfielder": 3, "MID": 3,
     "Forward": 4, "FWD": 4,
+}
+
+# Cumulative cols in 2024-25 playerstats.csv that need diffing for per-GW deltas.
+HIST_CUMULATIVE_COLS = {
+    "expected_goals": "expected_goals",
+    "expected_assists": "expected_assists",
+    "expected_goal_involvements": "expected_goal_involvements",
+    "expected_goals_conceded": "expected_goals_conceded",
+    "bps": "bps",
+    "ict_index": "ict_index",
+    "bonus": "bonus",
 }
 
 
@@ -119,7 +141,7 @@ def _discover_gw_bounds() -> tuple[int, int]:
 
 
 def _build_teams() -> pd.DataFrame:
-    """Renames FPL-CI teams.csv to the FPL-API column contract."""
+    """Renames FPL-CI teams.csv to the FPL-API column contract (current season only)."""
     src = _fetch_csv(f"{SEASON}/teams.csv", cache=False)
     if src is None or src.empty:
         raise RuntimeError("FPL-CI teams.csv unavailable")
@@ -132,64 +154,83 @@ def _build_teams() -> pd.DataFrame:
     return out
 
 
-def _build_fixtures(current_gw: int, max_gw: int, teams: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Concats PL fixtures, synthesizes numeric `id`; returns (df, (team,gw)->id lookup)."""
+def _normalize_fixture_columns(raw: pd.DataFrame, code_to_id: dict[int, int]) -> pd.DataFrame:
+    """Renames FPL-CI matches/fixtures cols → fixtures.csv schema; remaps team codes → ids."""
+    raw = raw.dropna(subset=["match_id", "gameweek", "home_team", "away_team"]).copy()
+    raw = raw.drop_duplicates(subset=["match_id"], keep="last")
+    raw["gameweek"] = raw["gameweek"].astype(float).astype(int)
+    raw["home_team"] = raw["home_team"].astype(float).astype(int).map(code_to_id)
+    raw["away_team"] = raw["away_team"].astype(float).astype(int).map(code_to_id)
+    raw = raw.dropna(subset=["home_team", "away_team"]).copy()
+    raw["home_team"] = raw["home_team"].astype(int)
+    raw["away_team"] = raw["away_team"].astype(int)
+    raw["finished"] = raw["finished"].astype(str).str.lower() == "true"
+    return raw
+
+
+def _build_fixtures_current(
+    current_gw: int, max_gw: int, code_to_id: dict[int, int]
+) -> pd.DataFrame:
+    """Concats current-season per-GW fixtures into one frame, filtered to PL."""
     parts: list[pd.DataFrame] = []
     for gw in range(1, max_gw + 1):
         df = _fetch_gw_csv(gw, "fixtures.csv", cache_history=(gw < current_gw))
         if df is not None and not df.empty:
             parts.append(df)
     if not parts:
-        raise RuntimeError("no fixtures found in FPL-CI dataset")
+        raise RuntimeError("no fixtures found for current season")
     raw = pd.concat(parts, ignore_index=True)
-
     if "tournament" in raw.columns:
         raw = raw[raw["tournament"].astype(str).str.lower() == "prem"].copy()
-    raw = raw.dropna(subset=["match_id", "gameweek", "home_team", "away_team"])
-    raw = raw.drop_duplicates(subset=["match_id"], keep="last")
+    raw = _normalize_fixture_columns(raw, code_to_id)
+    raw["season"] = SEASON
+    return raw
 
-    # FPL-CI fixtures encode home/away_team as team `code`, not `id`.
-    code_to_id = dict(zip(teams["code"].astype(int), teams["team_id"].astype(int)))
-    raw["gameweek"] = raw["gameweek"].astype(float).astype(int)
-    raw["home_team"] = raw["home_team"].astype(float).astype(int).map(code_to_id)
-    raw["away_team"] = raw["away_team"].astype(float).astype(int).map(code_to_id)
-    if raw["home_team"].isna().any() or raw["away_team"].isna().any():
-        raise RuntimeError("fixtures contain team codes not present in teams.csv")
-    raw["home_team"] = raw["home_team"].astype(int)
-    raw["away_team"] = raw["away_team"].astype(int)
-    raw["finished"] = raw["finished"].astype(str).str.lower() == "true"
-    # Deterministic synthetic id: (kickoff_time, match_id) is stable across runs.
-    raw = raw.sort_values(["kickoff_time", "match_id"]).reset_index(drop=True)
-    raw["id"] = range(1, len(raw) + 1)
 
-    out = raw.rename(columns={
+def _build_fixtures_historical(
+    season: str, code_to_id: dict[int, int]
+) -> pd.DataFrame:
+    """Loads <season>/matches/matches.csv; remaps team codes → current team_ids; drops non-PL teams."""
+    raw = _fetch_csv(f"{season}/matches/matches.csv", cache=True)
+    if raw is None or raw.empty:
+        return pd.DataFrame()
+    if "tournament" in raw.columns:
+        raw = raw[raw["tournament"].astype(str).str.lower() == "prem"].copy()
+    raw = _normalize_fixture_columns(raw, code_to_id)
+    raw["season"] = season
+    return raw
+
+
+def _assign_global_fixture_ids(fixtures: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Sorts by (season, kickoff_time, match_id), assigns globally unique `id`, returns lookup."""
+    fx = fixtures.sort_values(["season", "kickoff_time", "match_id"]).reset_index(drop=True)
+    fx["id"] = range(1, len(fx) + 1)
+    rename = {
         "gameweek": "event",
         "home_team": "team_h",
         "away_team": "team_a",
         "home_score": "team_h_score",
         "away_score": "team_a_score",
-    })
-    keep_first = ["id", "event", "finished", "kickoff_time",
+    }
+    fx = fx.rename(columns=rename)
+    keep_first = ["id", "season", "event", "finished", "kickoff_time",
                   "team_h", "team_a", "team_h_score", "team_a_score", "match_id"]
-    extras = [c for c in out.columns if c not in keep_first
+    extras = [c for c in fx.columns if c not in keep_first
               and (c.startswith("home_") or c.startswith("away_")
                    or c in ("home_team_elo", "away_team_elo"))]
-    out = out[keep_first + extras]
+    fx = fx[keep_first + extras]
 
-    home_lookup = (out.sort_values("kickoff_time")
-                      .groupby(["team_h", "event"])["id"].first())
-    away_lookup = (out.sort_values("kickoff_time")
-                      .groupby(["team_a", "event"])["id"].first())
-    lookup: dict[tuple[int, int], int] = {}
-    for (team, event), fid in home_lookup.items():
-        lookup[(int(team), int(event))] = int(fid)
-    for (team, event), fid in away_lookup.items():
-        lookup.setdefault((int(team), int(event)), int(fid))
-    return out, lookup
+    lookup: dict[tuple[int, int, str], int] = {}
+    for fid, season, team_h, team_a, event in zip(
+        fx["id"], fx["season"], fx["team_h"], fx["team_a"], fx["event"]
+    ):
+        lookup.setdefault((int(team_h), int(event), str(season)), int(fid))
+        lookup.setdefault((int(team_a), int(event), str(season)), int(fid))
+    return fx, lookup
 
 
 def _build_players(teams: pd.DataFrame, current_gw: int) -> pd.DataFrame:
-    """Joins players.csv with latest playerstats.csv to recreate the FPL element shape."""
+    """Joins current-season players.csv with latest playerstats.csv to recreate FPL element shape."""
     base = _fetch_csv(f"{SEASON}/players.csv", cache=False)
     if base is None or base.empty:
         raise RuntimeError("FPL-CI players.csv unavailable")
@@ -211,6 +252,7 @@ def _build_players(teams: pd.DataFrame, current_gw: int) -> pd.DataFrame:
 
     players = pd.DataFrame({
         "id": base["player_id"].astype(int),
+        "code": base["player_code"].astype(int),
         "web_name": base["web_name"],
         "first_name": base["first_name"],
         "second_name": base["second_name"],
@@ -266,8 +308,8 @@ def _overlay_live_fpl_api(players: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index()
 
 
-def _build_opta_per_gw(current_gw: int) -> pd.DataFrame:
-    """Aggregates per-match Opta into per-(player, round) sums (DGWs add across matches)."""
+def _build_opta_per_gw_current(current_gw: int) -> pd.DataFrame:
+    """Aggregates current-season per-match Opta into per-(player, round) sums (DGWs add)."""
     parts: list[pd.DataFrame] = []
     src_cols = list(OPTA_PM_COLS.keys())
     for gw in range(1, current_gw + 1):
@@ -293,13 +335,13 @@ def _build_opta_per_gw(current_gw: int) -> pd.DataFrame:
     return agg
 
 
-def _build_history(
+def _build_history_current(
     current_gw: int,
     players: pd.DataFrame,
+    fixture_lookup: dict[tuple[int, int, str], int],
     fixtures: pd.DataFrame,
-    fixture_lookup: dict[tuple[int, int], int],
 ) -> pd.DataFrame:
-    """Concats per-GW player stats and derives team / opponent_team / fixture columns."""
+    """Concats current-season per-GW player_gameweek_stats.csv; tags season."""
     parts: list[pd.DataFrame] = []
     for gw in range(1, current_gw + 1):
         df = _fetch_gw_csv(gw, "player_gameweek_stats.csv",
@@ -309,7 +351,7 @@ def _build_history(
             d["round"] = gw
             parts.append(d)
     if not parts:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=HIST_OUTPUT_COLS)
     hist = pd.concat(parts, ignore_index=True)
     hist = hist.rename(columns={"id": "player_id"})
 
@@ -317,9 +359,10 @@ def _build_history(
     team_series = hist["player_id"].map(pteam)
     hist = hist.loc[team_series.notna()].copy()
     hist["team"] = team_series.loc[hist.index].astype(int)
+    hist["season"] = SEASON
 
     hist["fixture"] = [
-        fixture_lookup.get((int(t), int(r)), 0)
+        fixture_lookup.get((int(t), int(r), SEASON), 0)
         for t, r in zip(hist["team"], hist["round"])
     ]
     fix_idx = fixtures.set_index("id")
@@ -329,7 +372,7 @@ def _build_history(
         for f, t in zip(hist["fixture"], hist["team"])
     ]
 
-    opta = _build_opta_per_gw(current_gw)
+    opta = _build_opta_per_gw_current(current_gw)
     if not opta.empty:
         hist = hist.merge(opta, on=["player_id", "round"], how="left")
         for c in OPTA_PM_COLS.values():
@@ -341,16 +384,197 @@ def _build_history(
     return hist[cols]
 
 
+def _build_history_historical(
+    season: str,
+    players_current: pd.DataFrame,
+    teams_current: pd.DataFrame,
+    fixture_lookup: dict[tuple[int, int, str], int],
+    fixtures: pd.DataFrame,
+) -> pd.DataFrame:
+    """Reconstructs per-(player, GW) history for a finished season.
+
+    Strategy:
+    1. Load historical players.csv → maps season-local player_id → player_code, team_code.
+    2. Diff cumulative cols in playerstats.csv for per-GW deltas; use event_points as target.
+    3. Aggregate playermatchstats.csv per (player_id, gw) via match_id → matches.csv join.
+    4. Remap player_id (season-local) → current player_id via player_code.
+    5. Remap team_id (season-local) → current team_id via team_code.
+    6. Drop rows for players/teams not in current pool (left PL, relegated).
+    """
+    base = _fetch_csv(f"{season}/players/players.csv", cache=True)
+    pstats = _fetch_csv(f"{season}/playerstats/playerstats.csv", cache=True)
+    pms = _fetch_csv(f"{season}/playermatchstats/playermatchstats.csv", cache=True)
+    matches = _fetch_csv(f"{season}/matches/matches.csv", cache=True)
+    if any(d is None or d.empty for d in (base, pstats, pms, matches)):
+        return pd.DataFrame(columns=HIST_OUTPUT_COLS)
+
+    # Mapping: season-local player_id → current player_id (via player_code).
+    code_to_current_pid = dict(zip(
+        players_current["code"].astype(int), players_current["id"].astype(int)
+    ))
+    pid_local_to_code = dict(zip(
+        base["player_id"].astype(int), base["player_code"].astype(int)
+    ))
+    pid_local_to_team_code = dict(zip(
+        base["player_id"].astype(int), base["team_code"].astype(int)
+    ))
+
+    # Mapping: team_code → current team_id.
+    code_to_current_tid = dict(zip(
+        teams_current["code"].astype(int), teams_current["team_id"].astype(int)
+    ))
+
+    # Step 1: per-GW deltas from cumulative playerstats.csv.
+    ps = pstats[["id", "gw", "event_points"] + list(HIST_CUMULATIVE_COLS.keys()) + [
+        "transfers_in_event", "transfers_out_event"
+    ]].copy()
+    ps["gw"] = pd.to_numeric(ps["gw"], errors="coerce").astype("Int64")
+    ps = ps.dropna(subset=["gw"]).copy()
+    ps["gw"] = ps["gw"].astype(int)
+    ps = ps.sort_values(["id", "gw"]).reset_index(drop=True)
+    for raw, _ in HIST_CUMULATIVE_COLS.items():
+        ps[raw] = pd.to_numeric(ps[raw], errors="coerce").fillna(0.0)
+        delta = ps.groupby("id")[raw].diff().fillna(ps[raw])
+        ps[raw] = delta.clip(lower=0.0)
+    ps = ps.rename(columns={"id": "player_id_local", "gw": "round",
+                            "event_points": "total_points"})
+    ps["total_points"] = pd.to_numeric(ps["total_points"], errors="coerce").fillna(0.0)
+
+    # Step 2: aggregate playermatchstats per (player_id, gw) via match_id → matches gameweek.
+    m_gw = matches[["match_id", "gameweek"]].copy()
+    m_gw["gameweek"] = pd.to_numeric(m_gw["gameweek"], errors="coerce").astype("Int64")
+    m_gw = m_gw.dropna(subset=["gameweek"])
+    m_gw["gameweek"] = m_gw["gameweek"].astype(int)
+    pm = pms.merge(m_gw, on="match_id", how="inner")
+    pm = pm.rename(columns={"player_id": "player_id_local", "gameweek": "round"})
+
+    # Per-match → per-(player, GW) sum aggregations.
+    agg_cols: dict[str, str] = {
+        "minutes_played": "minutes",
+        "goals": "goals_scored",
+        "assists": "assists",
+        "goals_conceded": "goals_conceded",
+        "saves": "saves",
+        "tackles_won": "tackles",
+        "recoveries": "recoveries",
+        "interceptions": "interceptions_raw",
+        "blocks": "blocks_raw",
+        "clearances": "clearances_raw",
+        "penalties_missed": "penalties_missed",
+    }
+    for src in agg_cols:
+        if src not in pm.columns:
+            pm[src] = 0.0
+        pm[src] = pd.to_numeric(pm[src], errors="coerce").fillna(0.0)
+    # Opta per-match Opta cols → pm_* aggregated.
+    for src in OPTA_PM_COLS:
+        if src not in pm.columns:
+            pm[src] = 0.0
+        pm[src] = pd.to_numeric(pm[src], errors="coerce").fillna(0.0)
+    # `start_min` → starts indicator (1 if start_min ≤ 1 i.e. on the pitch from kickoff).
+    if "start_min" in pm.columns:
+        pm["starts"] = (pd.to_numeric(pm["start_min"], errors="coerce").fillna(99) <= 1).astype(int)
+    else:
+        pm["starts"] = 0
+
+    sum_src = list(agg_cols.keys()) + list(OPTA_PM_COLS.keys()) + ["starts"]
+    pm_agg = pm.groupby(["player_id_local", "round"], as_index=False)[sum_src].sum()
+    pm_agg = pm_agg.rename(columns=agg_cols)
+    pm_agg = pm_agg.rename(columns=OPTA_PM_COLS)
+    # Derive CBI = interceptions + blocks + clearances; clean_sheets = goals_conceded==0 ∧ minutes≥60.
+    pm_agg["clearances_blocks_interceptions"] = (
+        pm_agg["interceptions_raw"] + pm_agg["blocks_raw"] + pm_agg["clearances_raw"]
+    )
+    pm_agg["clean_sheets"] = (
+        (pm_agg["goals_conceded"] == 0) & (pm_agg["minutes"] >= 60)
+    ).astype(int)
+    pm_agg = pm_agg.drop(columns=["interceptions_raw", "blocks_raw", "clearances_raw"])
+
+    # Step 3: merge playerstats deltas + playermatchstats aggregates.
+    # Outer merge: a player with a playerstats row but no playermatchstats row (DNP)
+    # gets NaN for per-match aggregate cols → fill with 0 so trainer doesn't drop them.
+    hist = pm_agg.merge(ps, on=["player_id_local", "round"], how="outer")
+    pm_filled = (list(agg_cols.values()) + list(OPTA_PM_COLS.values())
+                 + ["clearances_blocks_interceptions", "clean_sheets", "starts"])
+    for c in pm_filled:
+        if c in hist.columns:
+            hist[c] = pd.to_numeric(hist[c], errors="coerce").fillna(0.0)
+    for raw in HIST_CUMULATIVE_COLS:
+        if raw in hist.columns:
+            hist[raw] = hist[raw].fillna(0.0)
+    for c in ("total_points", "transfers_in_event", "transfers_out_event"):
+        if c in hist.columns:
+            hist[c] = hist[c].fillna(0.0)
+
+    # Step 4: remap player_id_local → current player_id; drop unmappable.
+    hist["player_code"] = hist["player_id_local"].astype(int).map(pid_local_to_code)
+    hist["player_id"] = hist["player_code"].map(code_to_current_pid)
+    hist = hist.dropna(subset=["player_id"]).copy()
+    hist["player_id"] = hist["player_id"].astype(int)
+
+    # Step 5: remap team via player's terminal team_code from historical players.csv.
+    hist["team_code_hist"] = hist["player_id_local"].astype(int).map(pid_local_to_team_code)
+    hist["team"] = hist["team_code_hist"].map(code_to_current_tid)
+    hist = hist.dropna(subset=["team"]).copy()
+    hist["team"] = hist["team"].astype(int)
+
+    # Step 6: fixture id + opponent_team via global lookup.
+    hist["season"] = season
+    hist["fixture"] = [
+        fixture_lookup.get((int(t), int(r), season), 0)
+        for t, r in zip(hist["team"], hist["round"])
+    ]
+    fix_idx = fixtures.set_index("id")
+    hist["opponent_team"] = [
+        (int(fix_idx.at[f, "team_a"]) if f in fix_idx.index and int(fix_idx.at[f, "team_h"]) == int(t)
+         else (int(fix_idx.at[f, "team_h"]) if f in fix_idx.index else 0))
+        for f, t in zip(hist["fixture"], hist["team"])
+    ]
+
+    # Fields absent in 2024-25 player-level data — fill with 0 to match output schema.
+    for c in ("bonus", "yellow_cards", "red_cards", "own_goals",
+              "penalties_saved", "defensive_contribution"):
+        if c not in hist.columns:
+            hist[c] = 0.0
+
+    hist = _num(hist, HIST_NUM)
+    cols = [c for c in HIST_OUTPUT_COLS if c in hist.columns]
+    return hist[cols]
+
+
 def main() -> None:
-    """Refreshes players / teams / fixtures / history CSVs under data/."""
+    """Refreshes players / teams / fixtures / history CSVs under data/ across all seasons."""
     current_gw, max_gw = _discover_gw_bounds()
-    print(f"[data_loader] current_gw={current_gw} max_gw={max_gw} season={SEASON}")
+    print(f"[data_loader] current_gw={current_gw} max_gw={max_gw} season={SEASON} "
+          f"historical={HISTORICAL_SEASONS}")
 
     teams = _build_teams()
-    fixtures, fixture_lookup = _build_fixtures(current_gw, max_gw, teams)
+    code_to_id = dict(zip(teams["code"].astype(int), teams["team_id"].astype(int)))
+
+    # Phase 1: fixtures across all seasons → global ids, season-aware lookup.
+    fx_parts: list[pd.DataFrame] = [
+        _build_fixtures_current(current_gw, max_gw, code_to_id)
+    ]
+    for s in HISTORICAL_SEASONS:
+        fx_h = _build_fixtures_historical(s, code_to_id)
+        if not fx_h.empty:
+            fx_parts.append(fx_h)
+    fixtures_all = pd.concat(fx_parts, ignore_index=True)
+    fixtures, fixture_lookup = _assign_global_fixture_ids(fixtures_all)
+
+    # Phase 2: current-season players (used as the join pool for all seasons).
     players = _build_players(teams, current_gw)
     players = _overlay_live_fpl_api(players)
-    history = _build_history(current_gw, players, fixtures, fixture_lookup)
+
+    # Phase 3: history across all seasons.
+    h_parts: list[pd.DataFrame] = [
+        _build_history_current(current_gw, players, fixture_lookup, fixtures)
+    ]
+    for s in HISTORICAL_SEASONS:
+        h_h = _build_history_historical(s, players, teams, fixture_lookup, fixtures)
+        if not h_h.empty:
+            h_parts.append(h_h)
+    history = pd.concat(h_parts, ignore_index=True)
 
     teams_out = teams[[
         "team_id", "team_name", "short_name", "strength",
@@ -363,8 +587,9 @@ def main() -> None:
     players.to_csv(DATA_DIR / "players.csv", index=False)
     fixtures.to_csv(DATA_DIR / "fixtures.csv", index=False)
     history.to_csv(DATA_DIR / "history.csv", index=False)
+    season_counts = history.groupby("season").size().to_dict() if not history.empty else {}
     print(f"[data_loader] wrote teams={len(teams_out)} players={len(players)} "
-          f"fixtures={len(fixtures)} history={len(history)}")
+          f"fixtures={len(fixtures)} history={len(history)} per-season={season_counts}")
 
 
 if __name__ == "__main__":

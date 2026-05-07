@@ -5,7 +5,9 @@ from typing import Any
 
 import pandas as pd
 
+from data_loader import SEASON
 from features import build_match_features, build_player_features, points_feature_cols
+from train_minutes_model import load_minutes_model, predict_minutes
 from train_points_model import load_points_models, predict_quantiles
 
 
@@ -14,18 +16,29 @@ class FPLEngine:
 
     def __init__(self, fixtures: pd.DataFrame, history: pd.DataFrame,
                  players: pd.DataFrame, teams: pd.DataFrame) -> None:
-        """Stores inputs; eagerly loads the quantile points model."""
+        """Stores inputs; eagerly loads the quantile points + minutes models."""
         self.fixtures, self.players, self.teams = fixtures, players, teams
         self.history = history.copy()
+        if "season" not in self.history.columns:
+            self.history["season"] = SEASON
         id2team = players.set_index("id")["team"].to_dict()
         if "team" not in self.history.columns:
             self.history["team"] = self.history["player_id"].map(id2team)
         self.points_models = load_points_models()
+        self.minutes_model = load_minutes_model()
 
     def _latest_rolling(self) -> pd.DataFrame:
-        """Per-player most-recent lagged / rolling feature row (one row per player_id)."""
+        """Per-player most-recent current-season feature row (one row per player_id).
+
+        Filters to SEASON before tail(1) so historical-season rows never become the
+        inference baseline for a player who has not yet appeared in the current season.
+        """
         fx = build_match_features(self.fixtures, self.history, self.teams)
         past = build_player_features(self.history, self.players, fx)
+        if past.empty:
+            return pd.DataFrame()
+        if "season" in past.columns:
+            past = past[past["season"] == SEASON]
         if past.empty:
             return pd.DataFrame()
         return past.sort_values(["player_id", "round"]).groupby("player_id").tail(1).set_index("player_id")
@@ -36,6 +49,8 @@ class FPLEngine:
         if latest.empty:
             return pd.DataFrame()
         fx_all = build_match_features(self.fixtures, self.history, self.teams)
+        if "season" in fx_all.columns:
+            fx_all = fx_all[fx_all["season"] == SEASON]
         fx_up = fx_all[(fx_all["event"] >= current_gw) &
                        (fx_all["event"] < current_gw + horizon)]
         if fx_up.empty:
@@ -78,20 +93,32 @@ class FPLEngine:
             return pd.DataFrame()
 
         rows = rows.join(predict_quantiles(self.points_models, rows[points_feature_cols()]))
-    
+
         pmeta = self.players.set_index("id")
+        bad = pmeta["status"].isin(["s", "n", "u"]).to_dict()
+        # Learned availability multiplier: predicted minutes / 90 per (player, fixture).
+        # Falls back to 1.0 if the model has not been trained yet.
+        if self.minutes_model is not None:
+            mins_pred = predict_minutes(self.minutes_model, rows)
+        else:
+            mins_pred = pd.Series(1.0, index=rows.index)
+        # FPL `chance_of_playing_next_round` is authoritative for the IMMEDIATE next GW
+        # (FPL knows about specific injuries the model cannot infer from history alone).
+        # Use it as a hard upper bound for that GW only — applying it across the horizon
+        # double-counts injuries for weeks the player will likely have recovered.
         chance = (pd.to_numeric(pmeta["chance_of_playing_next_round"],
                                 errors="coerce").fillna(100.0) / 100.0).to_dict()
-        bad = pmeta["status"].isin(["s", "n", "u"]).to_dict()
-        # chance_of_playing_next_round only describes the IMMEDIATE next GW.
-        # Applying it across the horizon double-counts injuries for weeks the
-        # player will likely have recovered. Hard-bad statuses ('s' suspended,
-        # 'n' not available, 'u' unavailable) zero all GWs.
         next_gw = rows["fixture_gw"].min()
-        rows["chance"] = 1.0
-        is_next = rows["fixture_gw"] == next_gw
-        rows.loc[is_next, "chance"] = rows.loc[is_next, "player_id"].map(chance).fillna(1.0)
-        rows.loc[rows["player_id"].map(bad).fillna(False), "chance"] = 0.0
+        is_next = (rows["fixture_gw"] == next_gw).values
+        fpl_hint = rows["player_id"].map(chance).fillna(1.0).values
+        mins_pred.loc[is_next] = pd.Series(
+            [min(m, h) for m, h in zip(mins_pred.values[is_next], fpl_hint[is_next])],
+            index=mins_pred.index[is_next],
+        )
+        # Hard-bad statuses ('s' suspended, 'n' not available, 'u' unavailable) zero all GWs.
+        bad_mask = rows["player_id"].map(bad).fillna(False).values
+        mins_pred.loc[bad_mask] = 0.0
+        rows["chance"] = mins_pred.values
         for c in ("q10", "q50", "q90"):
             rows[c] = rows[c] * rows["chance"]
 

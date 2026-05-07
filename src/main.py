@@ -7,10 +7,11 @@ import pandas as pd
 
 from chips import (recommend_bench_boost, recommend_free_hit,
                    recommend_triple_captain, recommend_wildcard)
-from data_loader import main as refresh_data
+from data_loader import SEASON, main as refresh_data
 from fpl_engine import FPLEngine
 from optimizer import solve_initial_squad, solve_rhc_transfers
 from train_match_model import train_match_models
+from train_minutes_model import train_minutes_model
 from train_points_model import train_points_models
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -35,19 +36,24 @@ def _md_table(df: pd.DataFrame) -> str:
 
 def _current_gw(fixtures: pd.DataFrame) -> int:
     """Smallest GW that's <50% finished — robust to lingering postponed matches in past GWs."""
-    g = fixtures.groupby("event")["finished"].agg(sum_="sum", size_="size")
+    fx = fixtures
+    if "season" in fx.columns:
+        fx = fx[fx["season"] == SEASON]
+    g = fx.groupby("event")["finished"].agg(sum_="sum", size_="size")
     upcoming = g[(g["sum_"] / g["size_"]) < 0.5]
     return int(upcoming.index.min()) if not upcoming.empty else 38
 
 
 def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) -> None:
-    """Trains any missing match / points model artifacts."""
+    """Trains any missing match / points / minutes model artifacts."""
     if not all((DATA_DIR / f).exists() for f in ("xgb_home_goals.json", "xgb_away_goals.json")):
         train_match_models(fx, hist, teams)
     points_files = [f"xgb_points_q{q:02d}_p{p}.json"
                     for q in (10, 50, 90) for p in (1, 2, 3, 4)]
     if not all((DATA_DIR / f).exists() for f in points_files):
         train_points_models()
+    if not (DATA_DIR / "xgb_minutes.json").exists():
+        train_minutes_model()
 
 
 def _load_prior() -> tuple[set[int], float, int] | None:

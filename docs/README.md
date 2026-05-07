@@ -365,11 +365,8 @@ The GitHub Actions workflow at [.github/workflows/weekly_update.yml](../.github/
 ## 9. Future Work
 
 - **Correlated-risk portfolio objective.** Replace the diagonal $\hat{\sigma}^2$ penalty with a proper $x^\top \Sigma x$ term driven by joint match-player Monte Carlo. Requires migrating from CBC to a MIQP solver (Gurobi / CPLEX / SCIP).
-- **Price-change prediction.** Model overnight price deltas from `transfers_in_event` / `transfers_out_event` to time transfers before price moves and preserve squad value over the season.
 - **Set-piece and manager regime changes.** Embedding-based detection of regime breaks (new manager, new set-piece taker) that invalidate historical rolling features.
 - **Learned chip scheduler.** Re-formulate chip activation as a jointly-solved MILP extension rather than a post-hoc heuristic.
-- **Multi-season training.** Once FPL-Core-Insights backfills 2024-25 with per-GW player snapshots, extend training beyond a single season to reduce variance on per-position quantile predictions.
-- **Status / availability model.** The current `chance_of_playing_next_round` haircut is a single multiplier; a learned availability model would handle partial rotation, fixture congestion, and load management.
 
 ---
 
