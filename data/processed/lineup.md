@@ -1,43 +1,43 @@
 # GW36 Lineup
 
-- **Bank:** £7.1m
+- **Bank:** £7.7m
 - **Hits:** 0
-- **Squad Value:** £92.9m
+- **Squad Value:** £92.3m
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Raya | ARS | GK | 6.1 | 2.9 | 8.58 |  |
-| Gabriel | ARS | DEF | 7.2 | 2.59 | 7.76 |  |
-| Virgil | LIV | DEF | 6.1 | 3.28 | 9.47 |  |
-| Thiaw | NEW | DEF | 5.0 | 2.37 | 7.24 |  |
-| Garner | EVE | MID | 5.2 | 2.72 | 8.17 |  |
-| Szoboszlai | LIV | MID | 7.0 | 2.71 | 8.07 |  |
-| B.Fernandes | MUN | MID | 10.4 | 3.02 | 8.91 | (C) |
-| Casemiro | MUN | MID | 5.8 | 2.74 | 8.05 | (VC) |
-| Anderson | NFO | MID | 5.6 | 2.52 | 7.5 |  |
-| Brobbey | SUN | FWD | 5.3 | 1.73 | 5.11 |  |
-| Bowen | WHU | FWD | 7.8 | 2.07 | 6.1 |  |
+| Raya | ARS | GK | 6.1 | 2.68 | 7.98 |  |
+| Virgil | LIV | DEF | 6.1 | 3.0 | 8.68 |  |
+| Gabriel | ARS | DEF | 7.2 | 2.34 | 7.0 |  |
+| Thiaw | NEW | DEF | 5.0 | 2.17 | 6.65 |  |
+| Mavropanos | WHU | DEF | 4.5 | 1.94 | 5.94 |  |
+| B.Fernandes | MUN | MID | 10.4 | 2.78 | 8.34 | (C) |
+| Garner | EVE | MID | 5.2 | 2.45 | 7.35 |  |
+| Szoboszlai | LIV | MID | 7.0 | 2.44 | 7.28 |  |
+| Casemiro | MUN | MID | 5.8 | 2.47 | 7.35 | (VC) |
+| Anderson | NFO | MID | 5.6 | 2.29 | 6.82 |  |
+| Bowen | WHU | FWD | 7.8 | 1.92 | 5.66 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Kelleher | BRE | GK | 4.8 | 1.92 | 5.93 |  |
-| Struijk | LEE | DEF | 4.4 | 0.43 | 1.26 |  |
-| Guéhi | MCI | DEF | 5.1 | 0.35 | 0.92 |  |
-| Solanke | TOT | FWD | 7.1 | 0.0 | 1.83 |  |
+| Kelleher | BRE | GK | 4.8 | 1.74 | 5.41 |  |
+| Struijk | LEE | DEF | 4.4 | 0.25 | 0.75 |  |
+| Brobbey | SUN | FWD | 5.3 | 1.53 | 4.54 |  |
+| Solanke | TOT | FWD | 7.1 | 0.0 | 1.14 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Scott | Garner |
+| Guéhi | Mavropanos |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW36 — B.Fernandes (+5.6 pts)
-- **Bench Boost:** GW37 (+3.6 pts)
+- **Triple Captain:** GW36 — B.Fernandes (+5.1 pts)
+- **Bench Boost:** GW37 (+4.2 pts)
 - **Free Hit:** GW39 (20 teams blank)
 - **Wildcard:** hold (1 suggested transfers, 0 hits)
