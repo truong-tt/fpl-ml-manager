@@ -1,11 +1,11 @@
-"""Chip scheduling heuristics for TC / BB / FH / WC over the projection horizon."""
+"""Chip schedule heuristics. TC / BB / FH / WC over projection horizon."""
 from __future__ import annotations
 
 import pandas as pd
 
 
 def recommend_triple_captain(proj: pd.DataFrame, squad_ids: set[int]) -> dict:
-    """Best (gw, MID/FWD player) by cap_xp among owned — chip lives or dies on the boom."""
+    """Best (gw, MID/FWD player) by cap_xp among owned. Chip lives/dies on boom."""
     gws = sorted(int(c.split("_")[-1]) for c in proj.columns if c.startswith("cap_xp_"))
     owned = proj[proj["id"].isin(squad_ids) & proj["pos_id"].isin([3, 4])]
     best = {"gw": None, "player_id": None, "bonus": 0.0}
@@ -18,7 +18,7 @@ def recommend_triple_captain(proj: pd.DataFrame, squad_ids: set[int]) -> dict:
 
 
 def recommend_bench_boost(proj: pd.DataFrame, squad_ids: set[int], xi_ids: set[int]) -> dict:
-    """Picks the horizon GW where the 4 bench players project the highest sum."""
+    """Pick horizon GW where 4 bench project highest sum."""
     gws = sorted(int(c.split("_")[1]) for c in proj.columns if c.startswith("xp_"))
     bench = proj[proj["id"].isin(squad_ids - xi_ids)]
     best = {"gw": None, "bonus": 0.0}
@@ -30,7 +30,7 @@ def recommend_bench_boost(proj: pd.DataFrame, squad_ids: set[int], xi_ids: set[i
 
 
 def recommend_free_hit(fixtures: pd.DataFrame, current_gw: int, horizon: int) -> dict:
-    """Finds the GW with the most teams blanking inside the horizon (current season only)."""
+    """GW with most teams blanking inside horizon. Current season only."""
     fx_curr = fixtures
     if "season" in fx_curr.columns:
         from data_loader import SEASON
@@ -46,6 +46,6 @@ def recommend_free_hit(fixtures: pd.DataFrame, current_gw: int, horizon: int) ->
 
 
 def recommend_wildcard(transfers_in: list, hits: int) -> dict:
-    """Heuristic: wildcard if the RHC wants >=4 transfers or >=2 hits this GW."""
+    """Heuristic. Wildcard if RHC wants >=4 transfers or >=2 hits this GW."""
     return {"recommend": len(transfers_in) >= 4 or hits >= 2,
             "n_transfers": len(transfers_in), "hits": hits}
