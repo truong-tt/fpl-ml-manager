@@ -1,43 +1,41 @@
 # GW36 Lineup
 
-- **Bank:** Â£2.3m
+- **Bank:** £1.0m
 - **Hits:** 0
-- **Squad Value:** Â£97.7m
-- **XI Expected Points (incl. captain):** 72.4
+- **Squad Value:** £99.0m
+- **XI Expected Points (incl. captain):** 75.8
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Roefs | SUN | GK | 4.8 | 4.25 | 11.55 |  |
-| Lacroix | CRY | DEF | 5.2 | 9.32 | 19.05 |  |
-| Virgil | LIV | DEF | 6.1 | 6.43 | 17.0 |  |
-| Richards | CRY | DEF | 4.4 | 8.97 | 17.76 |  |
-| O'Reilly | MCI | DEF | 5.3 | 6.29 | 11.78 |  |
-| Bernardo | MCI | MID | 6.2 | 5.65 | 11.01 |  |
-| Cherki | MCI | MID | 6.6 | 5.69 | 11.06 | (VC) |
-| Szoboszlai | LIV | MID | 7.0 | 4.43 | 12.25 |  |
-| B.Fernandes | MUN | MID | 10.4 | 5.23 | 16.18 |  |
-| Mateta | CRY | FWD | 7.6 | 4.55 | 9.33 |  |
-| Bowen | WHU | FWD | 7.7 | 11.57 | 15.49 | (C) |
+| Henderson | CRY | GK | 5.1 | 7.76 | 15.5 |  |
+| Lacroix | CRY | DEF | 5.2 | 8.14 | 15.65 |  |
+| Richards | CRY | DEF | 4.4 | 9.42 | 17.18 |  |
+| Tarkowski | EVE | DEF | 5.7 | 5.4 | 16.19 |  |
+| Virgil | LIV | DEF | 6.1 | 6.89 | 17.72 |  |
+| O'Reilly | MCI | DEF | 5.3 | 8.35 | 17.08 |  |
+| Bernardo | MCI | MID | 6.2 | 11.63 | 11.94 | (C) |
+| B.Fernandes | MUN | MID | 10.4 | 4.3 | 13.55 |  |
+| E.Le Fée | SUN | MID | 4.8 | 3.94 | 11.48 |  |
+| Haaland | MCI | FWD | 14.7 | 5.39 | 10.86 | (VC) |
+| Bowen | WHU | FWD | 7.7 | 4.59 | 12.8 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Raya | ARS | GK | 6.1 | 2.56 | 9.37 |  |
-| Gabriel | ARS | DEF | 7.2 | 2.62 | 11.17 |  |
-| Casemiro | MUN | MID | 5.8 | 3.47 | 11.24 |  |
-| Thiago | BRE | FWD | 7.3 | 3.57 | 11.39 |  |
+| Lammens | MUN | GK | 5.1 | 5.62 | 17.56 |  |
+| Dewsbury-Hall | EVE | MID | 5.2 | 3.85 | 11.59 |  |
+| Casemiro | MUN | MID | 5.8 | 3.47 | 11.29 |  |
+| Thiago | BRE | FWD | 7.3 | 2.39 | 9.33 |  |
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Wirtz | Bernardo |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW37 â€” B.Fernandes (+7.4 pts)
-- **Bench Boost:** GW37 (+18.4 pts)
-- **Wildcard:** hold (1 suggested transfers, 0 hits)
+- **Triple Captain:** GW36 — Bernardo (+7.0 pts)
+- **Bench Boost:** GW37 (+18.3 pts)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
