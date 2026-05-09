@@ -218,15 +218,25 @@ $$\kappa_{i,t} \;=\; \mu_{i,t} \;+\; \gamma \cdot \bigl(\hat{q}^{(i,t)}_{90} \;-
 
 Mean = dominant signal. Ceiling = tiebreaker among similar-mean candidates. `CAP_UPSIDE_WEIGHT` in [src/fpl_engine.py](../src/fpl_engine.py) = tunable knob — lower (e.g. 0.2) for safer captains, raise (0.5+) for boom-chasing.
 
-### 4.6 Affine quantile recalibration
+### 4.6 Isotonic quantile recalibration
 
-Walk-forward backtest (§7) shows raw boosters systematically over-predict central mass + under-shoot right tail on played-only rows. Per-(position, quantile) affine map applied at inference closes most of gap:
+Walk-forward backtest (§7) shows raw boosters systematically over-predict central mass + under-shoot right tail on played-only rows. Per-(position, quantile) monotone non-parametric map applied at inference closes gap. Implementation in [src/recalibrate_points.py](../src/recalibrate_points.py):
 
-$$\hat{q}^{\text{cal}}_\alpha = a_{p,\alpha} + b_{p,\alpha} \cdot \hat{q}_\alpha, \qquad b_{p,\alpha} \in [0.1, 5.0]$$
+1. Equal-frequency bin played-only `q_pred` into ~20 buckets per (pos, α) cell.
+2. Per bin, take empirical α-quantile of `y` as calibration target (`bin_center → bin_alpha_quantile`).
+3. Fit `sklearn.isotonic.IsotonicRegression(out_of_bounds="clip")` on (bin_center, bin_alpha_quantile). Knot pairs serialized as `{type: "iso", knots: [[x_i, y_i], …]}`.
 
-Coefficients fit by minimizing pinball loss on played-only walk-forward predictions ([src/recalibrate_points.py](../src/recalibrate_points.py)), serialized to `data/points_recalib.json`, auto-loaded by `train_points_model.predict_quantiles` after row-sort + before sanity clip. Slope floor $b \geq 0.1$ preserves booster's per-row ranking that captaincy + risk terms depend on — letting $b \to 0$ collapses calibrated quantile to population constant. Non-crossing re-enforced after affine transform.
+Affine fallback `a + b · q_pred`, $b \in [0.1, 5.0]$, kicks in for any (pos, α) cell with rows < `MIN_ROWS_ISOTONIC` (= 400) — isotonic over-fits per-bin noise on small subsets. Slope floor $b \geq 0.1$ preserves booster's per-row ranking that captaincy + risk terms depend on. Stored as `{type: "affine", ab: [a, b]}`. Legacy `[a, b]` list form auto-detected for backward compat.
 
-Held-out validation on GW 32–35 with coefficients fit on GW 28–30 (played-only):
+JSON schema:
+
+```
+{pos_id: {q10|q50|q90: {type: "iso"|"affine", knots|ab: ...}}}
+```
+
+Auto-loaded by `train_points_model.predict_quantiles` after row-sort + before sanity clip. Non-crossing re-enforced after recalibration. Same family as §4.7 minutes head.
+
+Held-out validation (early affine variant, GW 32–35 fit on GW 28–30, played-only):
 
 | Level | Coverage (raw) | Coverage (recalib) | Pinball Δ |
 | --- | --- | --- | --- |
@@ -234,7 +244,7 @@ Held-out validation on GW 32–35 with coefficients fit on GW 28–30 (played-on
 | q50 | 0.28 | 0.44 | −7% |
 | q90 | 0.79 | 0.86 | −6% |
 
-Affine intentionally simple: three quantile levels + few thousand played rows per position, monotone isotonic per (position, quantile) overfits per-bin noise. Isotonic upgrade queued for larger holdout (§11).
+Isotonic variant supersedes affine on cells with adequate row count; expect comparable or improved pinball deltas pending fresh holdout publication.
 
 ### 4.7 Minutes-head isotonic recalibration
 
@@ -405,7 +415,7 @@ fpl-ml-manager/
 │   ├── features.py              # ClubElo + rolling team/player + per-player Opta features
 │   ├── train_match_model.py     # Poisson goals + DC τ + analytic CS
 │   ├── train_points_model.py    # Per-position Quantile XGBoost (12 boosters)
-│   ├── train_minutes_model.py   # Expected minutes / 90 (single shared logistic XGBoost)
+│   ├── train_minutes_model.py   # Two-stage: P(plays) classifier × E[mins/90 | plays] regressor
 │   ├── fpl_engine.py            # Inference engine, projection frame builder
 │   ├── optimizer.py             # MILP squad + XI + captain, RHC transfers
 │   ├── chips.py                 # TC / BB / FH / WC heuristics
@@ -497,6 +507,8 @@ Recalibration auto-fires inside `python src/main.py` when `data/points_recalib.j
 
 ## 10. Recently Shipped
 
+- **Feature-schema drift retrain guard** ([src/main.py](../src/main.py)). `_ensure_models` now probes each cached booster's stored `feature_names` via `_booster_features` and forces a retrain when it diverges from the current `features.py` output (`_schema_drift`). Retrain also wipes the matching recalib JSON so `_maybe_recalibrate` re-fits against fresh raw quantiles. Fixes XGBoost `feature_names mismatch` on GitHub Actions runs that always pull HEAD's stale committed artifacts.
+- **GW-in-play pipeline guard** ([src/main.py](../src/main.py)). `_gw_in_play` short-circuits `main()` when any current-season fixture is live (kickoff in [now − 3 h, now], `finished=False`) or imminent (kickoff in [now, now + 2 h]). Prevents producing a lineup the user can't act on between deadline and final whistle. GitHub Actions cron (`30 5,17 * * *`) still fires unconditionally; guard exits early after checkout + setup.
 - **EMA rolling features** (§2.2, [src/features.py](../src/features.py)). Replaced `rolling(w).mean()` with `ewm(halflife=w/2).mean()` across all team/Opta/player rolling stats. Half-life scales with nominal window (`roll5` → halflife 2.5, `roll10` → halflife 5). Catches manager/set-piece/form regime changes faster — one-pre-GW shock now propagates exponentially rather than waiting `w` GWs to slide out of equal-weight window. Forces one-time retrain of every model artifact.
 - **Two-stage minutes head** (§4.3, [src/train_minutes_model.py](../src/train_minutes_model.py)). Replaces single `reg:logistic` regressor with `binary:logistic` `plays` classifier × `reg:logistic` `mins-given-played` regressor on disjoint subsets of bimodal minutes target. Engine consumes `mins_pred = plays × mins_when_played` for q10/q50 (mean-mass needs minutes on pitch), `plays` alone for q90 (hauls usually land before any sub, ceiling near-fully realised given player gets on). Legacy single-head artifact stays loadable as fallback.
 - **Isotonic per-(position, quantile) points recalibration** (§4.6, [src/recalibrate_points.py](../src/recalibrate_points.py)). Equal-frequency bins on `q_pred` × per-bin empirical α-quantile of `y` × `sklearn.isotonic.IsotonicRegression` — canonical non-parametric quantile recalibrator. Falls back to prior affine map for any (pos, α) cell with fewer than `MIN_ROWS_ISOTONIC` (= 400) rows. Non-crossing re-enforced row-wise.
