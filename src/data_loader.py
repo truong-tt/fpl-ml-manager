@@ -1,10 +1,10 @@
 """FPL data loader. Multi-season ingest from FPL-Core-Insights + live FPL API price overlay.
 
-Current season uses By-Gameweek slicing. Historical seasons use entity-folder layout
-(2024-2025 onwards). Per-GW deltas reconstructed from cumulative `playerstats.csv`
-plus per-match `playermatchstats.csv` joined to `matches.csv` for gameweek attribution.
+Current season: By-Gameweek slicing. Historical seasons: entity-folder layout
+(2024-2025+). Per-GW deltas reconstructed from cumulative playerstats.csv plus
+per-match playermatchstats.csv joined to matches.csv for GW attribution.
 
-Cross-season joins stable on FPL `player_code` and `team.code`. Players/teams absent
+Cross-season joins stable on FPL player_code + team.code. Players/teams absent
 from current season pool (left PL, relegated) dropped from history.
 """
 from __future__ import annotations
@@ -40,8 +40,8 @@ HIST_NUM = [
     "minutes", "goals_scored", "goals_conceded", "total_points",
 ]
 
-# Excludes player-meta fields that live in players.csv. Merging both in
-# features.py would collide on penalties_order, status, etc.
+# Excludes player-meta in players.csv. Merging both in features.py would collide
+# on penalties_order, status, etc.
 HIST_OUTPUT_COLS = [
     "player_id", "round", "season", "fixture", "opponent_team", "team",
     "minutes", "goals_scored", "goals_conceded", "assists",
@@ -73,7 +73,7 @@ POSITION_TO_ELEMENT_TYPE = {
     "Forward": 4, "FWD": 4,
 }
 
-# Cumulative cols in 2024-25 playerstats.csv. Need diffing for per-GW deltas.
+# Cumulative cols in 2024-25 playerstats.csv. Diff for per-GW deltas.
 HIST_CUMULATIVE_COLS = {
     "expected_goals": "expected_goals",
     "expected_assists": "expected_assists",
@@ -86,14 +86,14 @@ HIST_CUMULATIVE_COLS = {
 
 
 def _num(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
-    """Coerce cols to float. Fill NaN with 0."""
+    """Coerce cols → float. Fill NaN with 0."""
     for c in cols:
         df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0.0)
     return df
 
 
 def _fetch_csv(rel_path: str, cache: bool = True, retries: int = 3) -> Optional[pd.DataFrame]:
-    """GET <FPL_CI_BASE>/<rel_path> with retry. Cache under data/.fpl_ci_cache."""
+    """GET <FPL_CI_BASE>/<rel_path>. Cache under data/.fpl_ci_cache."""
     cache_path = CACHE_DIR / rel_path
     if cache and cache_path.exists():
         return pd.read_csv(cache_path)
@@ -141,7 +141,7 @@ def _discover_gw_bounds() -> tuple[int, int]:
 
 
 def _build_teams() -> pd.DataFrame:
-    """Rename FPL-CI teams.csv to FPL-API column contract. Current season only."""
+    """Rename FPL-CI teams.csv → FPL-API col contract. Current season only."""
     src = _fetch_csv(f"{SEASON}/teams.csv", cache=False)
     if src is None or src.empty:
         raise RuntimeError("FPL-CI teams.csv unavailable")
@@ -190,7 +190,7 @@ def _build_fixtures_current(
 def _build_fixtures_historical(
     season: str, code_to_id: dict[int, int]
 ) -> pd.DataFrame:
-    """Load <season>/matches/matches.csv. Remap team codes → current team_ids. Drop non-PL teams."""
+    """Load <season>/matches/matches.csv. Remap team codes → current team_ids. Drop non-PL."""
     raw = _fetch_csv(f"{season}/matches/matches.csv", cache=True)
     if raw is None or raw.empty:
         return pd.DataFrame()
@@ -202,7 +202,7 @@ def _build_fixtures_historical(
 
 
 def _assign_global_fixture_ids(fixtures: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Sort by (season, kickoff_time, match_id). Assign globally unique `id`. Return lookup."""
+    """Sort by (season, kickoff_time, match_id). Globally unique `id`. Return lookup."""
     fx = fixtures.sort_values(["season", "kickoff_time", "match_id"]).reset_index(drop=True)
     fx["id"] = range(1, len(fx) + 1)
     rename = {
@@ -230,7 +230,7 @@ def _assign_global_fixture_ids(fixtures: pd.DataFrame) -> tuple[pd.DataFrame, di
 
 
 def _build_players(teams: pd.DataFrame, current_gw: int) -> pd.DataFrame:
-    """Join current-season players.csv with latest playerstats.csv. Recreate FPL element shape."""
+    """Join current-season players.csv + latest playerstats.csv. Recreate FPL element shape."""
     base = _fetch_csv(f"{SEASON}/players.csv", cache=False)
     if base is None or base.empty:
         raise RuntimeError("FPL-CI players.csv unavailable")
@@ -309,7 +309,7 @@ def _overlay_live_fpl_api(players: pd.DataFrame) -> pd.DataFrame:
 
 
 def _build_opta_per_gw_current(current_gw: int) -> pd.DataFrame:
-    """Aggregate current-season per-match Opta into per-(player, round) sums. DGWs add."""
+    """Aggregate current-season per-match Opta → per-(player, round) sums. DGWs add."""
     parts: list[pd.DataFrame] = []
     src_cols = list(OPTA_PM_COLS.keys())
     for gw in range(1, current_gw + 1):
@@ -395,7 +395,7 @@ def _build_history_historical(
 
     Strategy:
     1. Load historical players.csv. Map season-local player_id → player_code, team_code.
-    2. Diff cumulative cols in playerstats.csv for per-GW deltas. Use event_points as target.
+    2. Diff cumulative cols in playerstats.csv for per-GW deltas. event_points = target.
     3. Aggregate playermatchstats.csv per (player_id, gw) via match_id → matches.csv join.
     4. Remap player_id (season-local) → current player_id via player_code.
     5. Remap team_id (season-local) → current team_id via team_code.
@@ -466,12 +466,12 @@ def _build_history_historical(
         if src not in pm.columns:
             pm[src] = 0.0
         pm[src] = pd.to_numeric(pm[src], errors="coerce").fillna(0.0)
-    # Opta per-match cols → pm_* aggregated.
+    # Opta per-match → pm_* aggregated.
     for src in OPTA_PM_COLS:
         if src not in pm.columns:
             pm[src] = 0.0
         pm[src] = pd.to_numeric(pm[src], errors="coerce").fillna(0.0)
-    # `start_min` → starts indicator. 1 if start_min ≤ 1, i.e. on pitch from kickoff.
+    # start_min → starts indicator. 1 if start_min ≤ 1 (on pitch from kickoff).
     if "start_min" in pm.columns:
         pm["starts"] = (pd.to_numeric(pm["start_min"], errors="coerce").fillna(99) <= 1).astype(int)
     else:
@@ -481,7 +481,7 @@ def _build_history_historical(
     pm_agg = pm.groupby(["player_id_local", "round"], as_index=False)[sum_src].sum()
     pm_agg = pm_agg.rename(columns=agg_cols)
     pm_agg = pm_agg.rename(columns=OPTA_PM_COLS)
-    # Derive CBI = interceptions + blocks + clearances. clean_sheets = goals_conceded==0 ∧ minutes≥60.
+    # CBI = interceptions + blocks + clearances. clean_sheets = goals_conceded==0 ∧ minutes≥60.
     pm_agg["clearances_blocks_interceptions"] = (
         pm_agg["interceptions_raw"] + pm_agg["blocks_raw"] + pm_agg["clearances_raw"]
     )
@@ -492,7 +492,7 @@ def _build_history_historical(
 
     # Step 3. Merge playerstats deltas + playermatchstats aggregates.
     # Outer merge. Player with playerstats row but no playermatchstats row (DNP)
-    # gets NaN for per-match aggregate cols. Fill 0 so trainer doesn't drop them.
+    # gets NaN for per-match agg cols. Fill 0 so trainer doesn't drop them.
     hist = pm_agg.merge(ps, on=["player_id_local", "round"], how="outer")
     pm_filled = (list(agg_cols.values()) + list(OPTA_PM_COLS.values())
                  + ["clearances_blocks_interceptions", "clean_sheets", "starts"])

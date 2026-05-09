@@ -1,4 +1,23 @@
-"""Per-(position, quantile) affine recalibration for points model. Played-only pinball fit."""
+"""Per-(pos, quantile) isotonic recalib for points head.
+
+Replaces affine `a + b * q_pred` with non-parametric monotone curve. Affine left
+tail residual non-linearity (q90 still under-fired on booms after slope correction).
+Same family as minutes head 4.7 isotonic.
+
+Fit:
+1. Played-only rows (engine multiplies raw quantile by mins_pred → recalibrating
+   on DNP-inflated dist double-counts availability multiplier).
+2. Equal-frequency bin q_pred into N bins. Per bin: empirical alpha-quantile of
+   y (Bayes-optimal estimate of conditional alpha-quantile in bin).
+3. sklearn IsotonicRegression on (bin_center, bin_alpha_quantile).
+4. Persist knots JSON. Inference = linear-interp between knots.
+
+Non-crossing re-enforced row-wise (sort) at apply time. Three quantile recalibs
+fit independently.
+
+Affine fallback for any (pos, alpha) cell with < MIN_ROWS — isotonic on small
+samples = high-variance.
+"""
 from __future__ import annotations
 
 import argparse
@@ -8,6 +27,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
+from sklearn.isotonic import IsotonicRegression
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DEFAULT_PRED = DATA_DIR / "processed" / "backtest" / "points_pred.csv"
@@ -16,22 +36,19 @@ QUANTILES = [0.10, 0.50, 0.90]
 QCOLS = {0.10: "q10_pred", 0.50: "q50_pred", 0.90: "q90_pred"}
 POSITIONS = [1, 2, 3, 4]
 
+MIN_ROWS_ISOTONIC = 400  # below = isotonic over-fits empty bins
+N_BINS_DEFAULT = 30
+B_MIN, B_MAX = 0.1, 5.0  # affine fallback slope bounds
+
 
 def pinball_loss(y: np.ndarray, q: np.ndarray, alpha: float) -> float:
-    """Pinball / check loss. Match XGBoost `reg:quantileerror` objective."""
+    """Pinball / check loss. Match XGBoost reg:quantileerror objective."""
     diff = y - q
     return float(np.mean(np.where(diff >= 0, alpha * diff, (alpha - 1) * diff)))
 
 
-# Lower bound on slope. b=0 collapses recalib to constant, destroys booster
-# per-row ranking signal optimizer variance + captaincy terms depend on.
-# 0.1 keeps rank order intact. Marginal pinball-loss cost on flat-target quantiles.
-B_MIN, B_MAX = 0.1, 5.0
-
-
-def fit_affine(y: np.ndarray, q_pred: np.ndarray, alpha: float
-               ) -> tuple[float, float]:
-    """Return (a, b). b in [B_MIN, B_MAX]. Minimize pinball(y, a + b*q_pred)."""
+def fit_affine(y: np.ndarray, q_pred: np.ndarray, alpha: float) -> tuple[float, float]:
+    """SLSQP min pinball(y, a + b * q_pred). Slope bounded [B_MIN, B_MAX]."""
     if len(y) < 20:
         return 0.0, 1.0
 
@@ -39,20 +56,52 @@ def fit_affine(y: np.ndarray, q_pred: np.ndarray, alpha: float
         a, b = params
         return pinball_loss(y, a + b * q_pred, alpha)
 
-    # SLSQP with explicit bounds. Nelder-Mead does not respect bounds.
     res = minimize(obj, x0=np.array([0.0, 1.0]), method="SLSQP",
                    bounds=[(-50.0, 50.0), (B_MIN, B_MAX)],
                    options={"ftol": 1e-6, "maxiter": 200})
-    a, b = float(res.x[0]), float(res.x[1])
-    return a, b
+    return float(res.x[0]), float(res.x[1])
+
+
+def fit_isotonic_quantile(q_pred: np.ndarray, y: np.ndarray, alpha: float,
+                          n_bins: int = N_BINS_DEFAULT) -> list[list[float]]:
+    """Equal-freq bin q_pred → per-bin empirical alpha-quantile of y → isotonic.
+
+    Returns knots [[x, y], ...] for np.interp at apply time.
+    """
+    n = len(q_pred)
+    if n < MIN_ROWS_ISOTONIC:
+        return []
+
+    df = pd.DataFrame({"q": q_pred.astype(float), "y": y.astype(float)})
+    bins = pd.qcut(df["q"], q=min(n_bins, n // 8), duplicates="drop", labels=False)
+    df = df.assign(bin=bins).dropna(subset=["bin"])
+    if df["bin"].nunique() < 5:
+        return []
+    grp = df.groupby("bin", observed=True).agg(
+        q_center=("q", "mean"),
+        y_alpha=("y", lambda v: float(np.quantile(v, alpha))),
+        n=("y", "size"),
+    ).sort_values("q_center")
+    if len(grp) < 5:
+        return []
+
+    iso = IsotonicRegression(out_of_bounds="clip")
+    iso.fit(grp["q_center"].values, grp["y_alpha"].values,
+            sample_weight=grp["n"].values)
+    xs = iso.X_thresholds_.astype(float).tolist()
+    ys = iso.y_thresholds_.astype(float).tolist()
+    return [list(p) for p in zip(xs, ys)]
 
 
 def fit_points_recalib(pred: pd.DataFrame, played_only: bool = True
-                       ) -> dict[str, dict[str, list[float]]]:
-    """Fit affine (a, b) per (pos, alpha). Return {pos_id: {"qNN": [a, b]}}."""
+                       ) -> dict[str, dict[str, dict]]:
+    """Per (pos, alpha): isotonic if rows >= MIN_ROWS_ISOTONIC, else affine fallback.
+
+    Schema: {pos_id: {qNN: {type: iso|affine, knots|ab: ...}}}
+    """
     if played_only and "minutes" in pred.columns:
         pred = pred[pred["minutes"] > 0]
-    coef: dict[str, dict[str, list[float]]] = {}
+    coef: dict[str, dict[str, dict]] = {}
     for pos in POSITIONS:
         sub = pred[pred["pos_id"] == pos]
         if sub.empty:
@@ -60,9 +109,15 @@ def fit_points_recalib(pred: pd.DataFrame, played_only: bool = True
         coef[str(pos)] = {}
         for alpha in QUANTILES:
             qcol = QCOLS[alpha]
-            a, b = fit_affine(sub["y"].values.astype(float),
-                              sub[qcol].values.astype(float), alpha)
-            coef[str(pos)][f"q{int(alpha * 100):02d}"] = [a, b]
+            y = sub["y"].values.astype(float)
+            qp = sub[qcol].values.astype(float)
+            knots = fit_isotonic_quantile(qp, y, alpha)
+            key = f"q{int(alpha * 100):02d}"
+            if knots:
+                coef[str(pos)][key] = {"type": "iso", "knots": knots}
+            else:
+                a, b = fit_affine(y, qp, alpha)
+                coef[str(pos)][key] = {"type": "affine", "ab": [a, b]}
     return coef
 
 
@@ -77,9 +132,26 @@ def load_recalib(path: Path = DEFAULT_OUT) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _apply_one(spec: dict, vals: np.ndarray) -> np.ndarray:
+    """Apply one (pos, alpha) recalib spec. Supports legacy [a, b] lists."""
+    if isinstance(spec, list) and len(spec) == 2:  # legacy affine list
+        a, b = float(spec[0]), float(spec[1])
+        return a + b * vals
+    t = spec.get("type")
+    if t == "affine":
+        a, b = float(spec["ab"][0]), float(spec["ab"][1])
+        return a + b * vals
+    if t == "iso":
+        knots = spec["knots"]
+        xs = np.array([k[0] for k in knots], dtype=float)
+        ys = np.array([k[1] for k in knots], dtype=float)
+        return np.interp(vals, xs, ys)
+    return vals
+
+
 def apply_recalib(coef: dict, pos_id: np.ndarray, quantiles: pd.DataFrame
                   ) -> pd.DataFrame:
-    """Apply (a, b) per row pos_id × quantile. Unfitted positions pass through. Re-enforce non-crossing."""
+    """Per-row pos x quantile recalib. Re-enforce non-crossing."""
     out = quantiles.copy()
     for pos in POSITIONS:
         pos_coef = coef.get(str(pos))
@@ -88,13 +160,11 @@ def apply_recalib(coef: dict, pos_id: np.ndarray, quantiles: pd.DataFrame
         mask = (pos_id == pos)
         if not mask.any():
             continue
-        for col, key in (("q10", "q10"), ("q50", "q50"), ("q90", "q90")):
-            ab = pos_coef.get(key)
-            if ab is None:
+        for col in ("q10", "q50", "q90"):
+            spec = pos_coef.get(col)
+            if spec is None:
                 continue
-            a, b = float(ab[0]), float(ab[1])
-            out.loc[mask, col] = a + b * out.loc[mask, col].values
-    # Re-enforce non-crossing after row-wise affine maps.
+            out.loc[mask, col] = _apply_one(spec, out.loc[mask, col].values.astype(float))
     vals = out[["q10", "q50", "q90"]].values.copy()
     vals.sort(axis=1)
     out[["q10", "q50", "q90"]] = vals
@@ -102,16 +172,30 @@ def apply_recalib(coef: dict, pos_id: np.ndarray, quantiles: pd.DataFrame
 
 
 def _parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Fit affine recalibration on walk-forward predictions")
+    p = argparse.ArgumentParser(description="Fit isotonic recalib on walk-forward preds")
     p.add_argument("--pred", type=Path, default=DEFAULT_PRED,
-                   help="Walk-forward predictions CSV. Default: backtest output")
+                   help="Walk-forward preds CSV. Default: backtest output")
     p.add_argument("--out", type=Path, default=DEFAULT_OUT,
-                   help="Output JSON path. Default: data/points_recalib.json")
+                   help="Output JSON. Default: data/points_recalib.json")
     p.add_argument("--fit-end-gw", type=int, default=None,
-                   help="If set, fit only on rows with gw <= fit_end_gw. Held-out tail evaluates")
+                   help="Fit only rows with gw <= fit_end_gw")
     p.add_argument("--include-dnp", action="store_true",
-                   help="Include DNP (minutes=0) rows. Default uses played-only")
+                   help="Include DNP (minutes=0) rows. Default: played-only")
     return p.parse_args()
+
+
+def _summarise(coef: dict) -> None:
+    for pos, qmap in coef.items():
+        for q, spec in qmap.items():
+            t = spec.get("type") if isinstance(spec, dict) else "affine_legacy"
+            if t == "iso":
+                k = spec["knots"]
+                print(f"  pos={pos} {q} iso knots={len(k)} "
+                      f"x=[{k[0][0]:.2f}, {k[-1][0]:.2f}] "
+                      f"y=[{min(p[1] for p in k):.2f}, {max(p[1] for p in k):.2f}]")
+            elif t == "affine":
+                a, b = spec["ab"]
+                print(f"  pos={pos} {q} affine a={a:+.3f} b={b:.3f}")
 
 
 def main() -> None:
@@ -125,9 +209,7 @@ def main() -> None:
     coef = fit_points_recalib(pred, played_only=not args.include_dnp)
     save_recalib(coef, args.out)
     print(f"saved -> {args.out}")
-    for pos, qmap in coef.items():
-        for q, ab in qmap.items():
-            print(f"  pos={pos} {q}: a={ab[0]:+.3f}  b={ab[1]:.3f}")
+    _summarise(coef)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """Rolling team / player features. Elo from ClubElo (FPL-CI). Replay = fallback.
 
-All rolling state partitioned by `season`. Stop cross-season leakage. Player or
-team GW1 row in season N never sees data from season N-1.
+All rolling state partitioned by season. Stop cross-season leakage. Player or
+team GW1 row in season N never sees season N-1 data.
 """
 from __future__ import annotations
 
@@ -9,12 +9,23 @@ import numpy as np
 import pandas as pd
 
 TEAM_WINDOWS = [3, 5, 10]
-# Used only when FPL-CI home_team_elo/away_team_elo absent or null.
+# Used only when FPL-CI home_team_elo / away_team_elo absent or null.
 INIT_ELO, K, HFA = 1500.0, 20.0, 60.0
+
+# EMA rolling, not equal-weight. Halflife scales with nominal window: roll{w}
+# → halflife = w / 2. Recent GWs weight more without hard window cutoff.
+# Catches manager / form swings faster than rolling(w).mean() — there a 1-pre-GW
+# shock got 1/w weight until window slid past.
+EMA_HALFLIFE_FACTOR = 0.5
+
+
+def _ema_shifted(s: pd.Series, halflife: float) -> pd.Series:
+    """Shift-1 then EMA. Shift-1 prevents round-t target leak into round-t feature."""
+    return s.shift().ewm(halflife=halflife, adjust=False, ignore_na=True).mean()
 
 
 def _ensure_season(df: pd.DataFrame) -> pd.DataFrame:
-    """Backfill `season` col with single-season default. For legacy frames."""
+    """Backfill `season` col with single-season default. Legacy frames."""
     if "season" not in df.columns:
         df = df.copy()
         df["season"] = "current"
@@ -65,7 +76,7 @@ def elo_snapshot_series(fixtures: pd.DataFrame, teams: pd.DataFrame) -> pd.DataF
 
 
 def _rolling_team_stats(history: pd.DataFrame) -> pd.DataFrame:
-    """Per-(team, season, GW) xG/xGA rolled forward at TEAM_WINDOWS horizons."""
+    """Per-(team, season, GW) xG/xGA EMA at TEAM_WINDOWS horizons."""
     if history.empty or "team" not in history.columns:
         return pd.DataFrame()
     history = _ensure_season(history)
@@ -73,10 +84,11 @@ def _rolling_team_stats(history: pd.DataFrame) -> pd.DataFrame:
         ["expected_goals", "expected_goals_conceded", "goals_scored", "goals_conceded"]
     ].sum().sort_values(["season", "team", "round"])
     for w in TEAM_WINDOWS:
+        hl = w * EMA_HALFLIFE_FACTOR
         for raw, short in [("expected_goals", "xg"), ("expected_goals_conceded", "xga"),
                            ("goals_scored", "gf"), ("goals_conceded", "ga")]:
             g[f"roll_{short}_{w}"] = g.groupby(["season", "team"])[raw].transform(
-                lambda x: x.shift().rolling(w, min_periods=1).mean()
+                lambda x, hl=hl: _ema_shifted(x, hl)
             )
     return g
 
@@ -93,7 +105,7 @@ OPTA_DEFAULTS = {"oxg": 1.2, "oxga": 1.2, "obc": 1.5, "obca": 1.5, "osh": 11.0, 
 
 
 def _rolling_fixture_team_stats(fixtures: pd.DataFrame) -> pd.DataFrame:
-    """Per-(team, season, GW) rolling Opta stats. Each fixture = row per side."""
+    """Per-(team, season, GW) Opta EMA. Each fixture = row per side."""
     needed = [f"{p}_{r}" for r, _ in OPTA_STATS for p in ("home", "away")]
     if not all(c in fixtures.columns for c in needed):
         return pd.DataFrame()
@@ -115,9 +127,10 @@ def _rolling_fixture_team_stats(fixtures: pd.DataFrame) -> pd.DataFrame:
     long = pd.concat(parts, ignore_index=True).dropna(subset=["team"])
     long = long.sort_values(["season", "team", "kickoff_time"]).reset_index(drop=True)
     short_cols = [c for _, c in OPTA_STATS] + [f"{c}a" for _, c in OPTA_STATS]
+    hl = OPTA_WINDOW * EMA_HALFLIFE_FACTOR
     for c in short_cols:
         long[f"roll_{c}_{OPTA_WINDOW}"] = long.groupby(["season", "team"])[c].transform(
-            lambda x: x.shift().rolling(OPTA_WINDOW, min_periods=1).mean()
+            lambda x, hl=hl: _ema_shifted(x, hl)
         )
     keep = [f"roll_{c}_{OPTA_WINDOW}" for c in short_cols]
     return long.groupby(["season", "team", "round"], as_index=False)[keep].mean()
@@ -126,7 +139,7 @@ def _rolling_fixture_team_stats(fixtures: pd.DataFrame) -> pd.DataFrame:
 def build_match_features(
     fixtures: pd.DataFrame, history: pd.DataFrame, teams: pd.DataFrame
 ) -> pd.DataFrame:
-    """Join team rolling stats + Elo diff onto every fixture row."""
+    """Join team rolling + Elo diff onto every fixture row."""
     fx = elo_snapshot_series(fixtures, teams)
     fx = _ensure_season(fx)
     history = _ensure_season(history)
@@ -167,7 +180,7 @@ def build_match_features(
 
 
 def match_feature_cols() -> list[str]:
-    """Canonical feature-column order for match model."""
+    """Canonical match feature col order."""
     cols = [f"{s}_{stat}_{w}"
             for s in ("h", "a") for w in TEAM_WINDOWS for stat in ("xg", "xga", "gf", "ga")]
     opta_short = [c for _, c in OPTA_STATS] + [f"{c}a" for _, c in OPTA_STATS]
@@ -179,10 +192,10 @@ def match_feature_cols() -> list[str]:
 def build_player_features(
     history: pd.DataFrame, players: pd.DataFrame, fixture_feats: pd.DataFrame
 ) -> pd.DataFrame:
-    """Per (player, past GW) training rows for points model. Target = total_points.
+    """Per (player, past GW) training rows. Target = total_points.
 
-    Rolling/lag features partitioned by (player_id, season). Player first GW in
-    new season starts cold. No prior-season form leakage.
+    Rolling/lag partitioned by (player_id, season). Player first GW in new
+    season starts cold. No prior-season form leakage.
     """
     if history.empty:
         return pd.DataFrame()
@@ -192,8 +205,8 @@ def build_player_features(
     for lag in (1, 2, 3):
         df[f"lag{lag}_min"] = df.groupby(["player_id", "season"])["minutes"].shift(lag).fillna(0.0)
 
-    # `total_points` excluded on purpose. Rolling = feedback loop where premium
-    # bad recent GW projects them lower forever.
+    # total_points excluded on purpose. Rolling = feedback loop. Premium with one
+    # bad recent GW projects lower forever.
     roll_map = {"expected_goals": "xg", "expected_assists": "xa",
                 "expected_goal_involvements": "xgi", "bps": "bps", "ict_index": "ict",
                 "saves": "saves", "clearances_blocks_interceptions": "cbi",
@@ -204,9 +217,10 @@ def build_player_features(
         if raw not in df.columns:
             df[raw] = 0.0
         for w in (5, 10):
+            hl = w * EMA_HALFLIFE_FACTOR
             df[f"roll{w}_{short}"] = (
                 df.groupby(["player_id", "season"])[raw]
-                  .transform(lambda x: x.shift().rolling(w, min_periods=1).mean())
+                  .transform(lambda x, hl=hl: _ema_shifted(x, hl))
                   .fillna(0.0)
             )
 
@@ -216,7 +230,7 @@ def build_player_features(
     ]].rename(columns={"id": "player_id", "element_type": "pos_id", "team": "team_id"})
     df = df.merge(meta, on="player_id", how="left")
     df["pos_id"] = df["pos_id"].fillna(3).astype(int)
-    # One-hot. Treating pos_id as ordinal conflates GK<->FWD scoring distributions.
+    # One-hot. pos_id ordinal would conflate GK<->FWD scoring distributions.
     for p in (1, 2, 3, 4):
         df[f"pos_{p}"] = (df["pos_id"] == p).astype(int)
     df["is_pen_taker"] = (df["penalties_order"].fillna(0) == 1).astype(int)
@@ -237,7 +251,7 @@ def build_player_features(
 
 
 def points_feature_cols() -> list[str]:
-    """Canonical feature-column order for quantile points model."""
+    """Canonical points feature col order."""
     base = ["pos_1", "pos_2", "pos_3", "pos_4",
             "is_home", "is_pen_taker", "is_fk_taker",
             "lag1_min", "lag2_min", "lag3_min",
@@ -250,11 +264,11 @@ def points_feature_cols() -> list[str]:
 
 
 def minutes_feature_cols() -> list[str]:
-    """Feature subset for availability / expected-minutes model.
+    """Feature subset for minutes head.
 
-    Drop set-piece flags and per-action rolling stats (cbi, tkl, saves). Strong
-    correlation with playing time but circular for predicting it. Keep lag/roll
-    minutes, form proxies (xg/xa/ict), position, fixture-side context.
+    Drop set-piece flags + per-action rolling (cbi/tkl/saves). Strong correlation
+    with playing time but circular for predicting it. Keep lag/roll minutes,
+    form proxies (xg/xa/ict), pos, fixture-side context.
     """
     return ["pos_1", "pos_2", "pos_3", "pos_4",
             "is_home",

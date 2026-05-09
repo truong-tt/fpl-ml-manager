@@ -1,11 +1,11 @@
-"""Chip schedule heuristics. TC / BB / FH / WC over projection horizon."""
+"""Chip heuristics. TC / BB / FH / WC over horizon."""
 from __future__ import annotations
 
 import pandas as pd
 
 
 def recommend_triple_captain(proj: pd.DataFrame, squad_ids: set[int]) -> dict:
-    """Best (gw, MID/FWD player) by cap_xp among owned. Chip lives/dies on boom."""
+    """Best (gw, owned MID/FWD) by cap_xp. Chip lives/dies on boom."""
     gws = sorted(int(c.split("_")[-1]) for c in proj.columns if c.startswith("cap_xp_"))
     owned = proj[proj["id"].isin(squad_ids) & proj["pos_id"].isin([3, 4])]
     best = {"gw": None, "player_id": None, "bonus": 0.0}
@@ -18,7 +18,7 @@ def recommend_triple_captain(proj: pd.DataFrame, squad_ids: set[int]) -> dict:
 
 
 def recommend_bench_boost(proj: pd.DataFrame, squad_ids: set[int], xi_ids: set[int]) -> dict:
-    """Pick horizon GW where 4 bench project highest sum."""
+    """GW where bench-4 sum xp peaks."""
     gws = sorted(int(c.split("_")[1]) for c in proj.columns if c.startswith("xp_"))
     bench = proj[proj["id"].isin(squad_ids - xi_ids)]
     best = {"gw": None, "bonus": 0.0}
@@ -46,6 +46,6 @@ def recommend_free_hit(fixtures: pd.DataFrame, current_gw: int, horizon: int) ->
 
 
 def recommend_wildcard(transfers_in: list, hits: int) -> dict:
-    """Heuristic. Wildcard if RHC wants >=4 transfers or >=2 hits this GW."""
+    """Fire if RHC wants >=4 transfers or >=2 hits. Proxy: squad far from optimal."""
     return {"recommend": len(transfers_in) >= 4 or hits >= 2,
             "n_transfers": len(transfers_in), "hits": hits}

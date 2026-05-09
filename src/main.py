@@ -10,6 +10,7 @@ from chips import (recommend_bench_boost, recommend_free_hit,
 from data_loader import SEASON, main as refresh_data
 from fpl_engine import FPLEngine
 from optimizer import solve_initial_squad, solve_rhc_transfers
+from train_bonus_model import train_bonus_model
 from train_match_model import train_match_models
 from train_minutes_model import train_minutes_model
 from train_points_model import train_points_models
@@ -18,7 +19,7 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 OUT_DIR = DATA_DIR / "processed"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-HORIZON = 5
+HORIZON = 8
 # Linear-std variance penalty (was variance^2). 0.05 = equivalent scale.
 # Set 0.0 if solver still under-invests in premiums.
 LAMBDA_VAR, LAMBDA_EO, BENCH_WEIGHT = 0.05, 0.0, 0.15
@@ -35,7 +36,7 @@ def _md_table(df: pd.DataFrame) -> str:
 
 
 def _current_gw(fixtures: pd.DataFrame) -> int:
-    """Smallest GW <50% finished. Robust to lingering postponed matches in past GWs."""
+    """Smallest GW <50% finished. Robust to lingering postponed past matches."""
     fx = fixtures
     if "season" in fx.columns:
         fx = fx[fx["season"] == SEASON]
@@ -45,19 +46,24 @@ def _current_gw(fixtures: pd.DataFrame) -> int:
 
 
 def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) -> None:
-    """Train any missing match / points / minutes model artifacts."""
+    """Train missing match / points / minutes / bonus artifacts."""
     if not all((DATA_DIR / f).exists() for f in ("xgb_home_goals.json", "xgb_away_goals.json")):
         train_match_models(fx, hist, teams)
     points_files = [f"xgb_points_q{q:02d}_p{p}.json"
                     for q in (10, 50, 90) for p in (1, 2, 3, 4)]
     if not all((DATA_DIR / f).exists() for f in points_files):
         train_points_models()
-    if not (DATA_DIR / "xgb_minutes.json").exists():
+    minutes_files = ("xgb_minutes_plays.json", "xgb_minutes_when_played.json")
+    if not all((DATA_DIR / f).exists() for f in minutes_files) and \
+       not (DATA_DIR / "xgb_minutes.json").exists():
         train_minutes_model()
+    bonus_files = [f"xgb_bonus_q{q:02d}.json" for q in (10, 50, 90)]
+    if not all((DATA_DIR / f).exists() for f in bonus_files):
+        train_bonus_model()
 
 
 def _load_prior() -> tuple[set[int], float, int] | None:
-    """Read last week squad snapshot for RHC. None on cold start."""
+    """Read last-week squad snapshot for RHC. None on cold start."""
     snap = OUT_DIR / "squad_snapshot.csv"
     if not snap.exists():
         return None
@@ -67,7 +73,7 @@ def _load_prior() -> tuple[set[int], float, int] | None:
 
 
 def _persist(squad: pd.DataFrame, bank: float, ft: int) -> None:
-    """Save this GW snapshot (squad + bank + FT) for next run."""
+    """Save GW snapshot (squad + bank + FT) for next run."""
     out = squad.copy()
     out["bank"], out["free_transfers"] = bank, ft
     out.to_csv(OUT_DIR / "squad_snapshot.csv", index=False)
@@ -79,7 +85,7 @@ def _render(
     players: pd.DataFrame, teams: pd.DataFrame,
     tc: dict, bb: dict, fh: dict, wc: dict,
 ) -> str:
-    """Render weekly lineup + transfers + chips as single markdown doc."""
+    """Weekly lineup + transfers + chips → single markdown doc."""
     tmap = teams.set_index("team_id")["short_name"].to_dict()
     nmap = players.set_index("id")["web_name"].to_dict()
 
@@ -87,7 +93,7 @@ def _render(
     d["Team"] = d["team_id"].map(tmap)
     d["Pos"] = d["pos_id"].map(POS)
     d["Price"] = d["price"].round(1)
-    # Captain row shows XP doubled so XI column-sum reflects actual GW total.
+    # Captain row XP doubled so XI col-sum reflects actual GW total.
     cap_mult_1 = d["id"].map({cap: 2.0}).fillna(1.0)
     d["XP(1)"] = (d["next_gw_xp"] * cap_mult_1).round(2)
     d["XP(H)"] = d["horizon_xp"].round(2)

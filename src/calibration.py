@@ -1,15 +1,15 @@
-"""Calibration audit for walk-forward predictions from `backtest.py`.
+"""Calibration audit for walk-forward preds from backtest.py.
 
 Two model families, two test families:
 
-- Points (quantile regression). Per-position empirical coverage P(y <= q_alpha)
-  vs nominal alpha. Pinball loss per quantile. Well-calibrated q90 sits at
-  coverage 0.90. Consistent under-coverage = over-tight upper tail (q90 too low).
-- Match (Poisson + Dixon-Coles). Mean Poisson NLL, MAE on goals, Brier on
-  clean-sheet probabilities, coverage check on CS rates.
+- Points (quantile reg). Per-pos empirical coverage P(y <= q_alpha) vs nominal
+  alpha. Pinball loss per quantile. Well-calibrated q90 = coverage 0.90.
+  Consistent under-coverage = upper tail too tight (q90 too low).
+- Match (Poisson + DC). Mean Poisson NLL, MAE on goals, Brier on CS probs,
+  coverage check on CS rates.
 
 No plotting deps. Outputs = CSVs + markdown table strings consumed by report
-writer in `backtest.py`.
+writer in backtest.py.
 """
 from __future__ import annotations
 
@@ -25,13 +25,13 @@ QCOLS = {0.10: "q10_pred", 0.50: "q50_pred", 0.90: "q90_pred"}
 
 
 def _pinball(y: np.ndarray, q_pred: np.ndarray, alpha: float) -> float:
-    """Pinball / check loss. Lower better. Match `reg:quantileerror` objective."""
+    """Pinball / check loss. Lower better. Match reg:quantileerror objective."""
     diff = y - q_pred
     return float(np.mean(np.where(diff >= 0, alpha * diff, (alpha - 1) * diff)))
 
 
 def _points_rows(pred: pd.DataFrame, scope: str) -> list[dict]:
-    """Per-(position, quantile) calibration rows. Tag with `scope` ('all' or 'played')."""
+    """Per-(pos, quantile) calibration rows. Tag with scope ('all' or 'played')."""
     rows: list[dict] = []
     for pos in sorted(pred["pos_id"].dropna().unique().astype(int)):
         sub = pred[pred["pos_id"] == pos]
@@ -56,10 +56,10 @@ def _points_rows(pred: pd.DataFrame, scope: str) -> list[dict]:
 
 
 def points_calibration_summary(pred: pd.DataFrame) -> pd.DataFrame:
-    """Per-(position, quantile) coverage + pinball loss in two scopes:
+    """Per-(pos, quantile) coverage + pinball in two scopes:
 
-    - `all`. Every (player, GW) row including DNPs. y=0 inflates lower-tail coverage.
-    - `played`. Rows with minutes > 0. True production-conditional calibration.
+    - all. Every (player, GW) row including DNPs. y=0 inflates lower-tail cov.
+    - played. minutes > 0. Production-conditional calibration.
     """
     if pred.empty:
         return pd.DataFrame()
@@ -72,7 +72,7 @@ def points_calibration_summary(pred: pd.DataFrame) -> pd.DataFrame:
 
 
 def points_overall(pred: pd.DataFrame) -> pd.DataFrame:
-    """Position-pooled coverage + pinball per quantile. `all` and `played` scopes."""
+    """Pos-pooled coverage + pinball per quantile. all + played scopes."""
     if pred.empty:
         return pd.DataFrame()
     out: list[dict] = []
@@ -94,14 +94,13 @@ def points_overall(pred: pd.DataFrame) -> pd.DataFrame:
 
 
 def _poisson_nll(y: np.ndarray, lam: np.ndarray, eps: float = 1e-9) -> float:
-    """Mean negative Poisson log-likelihood. Use gammaln for log(y!)."""
+    """Mean Poisson NLL. gammaln for log(y!)."""
     lam = np.maximum(lam, eps)
     return float(np.mean(lam - y * np.log(lam) + gammaln(y + 1.0)))
 
 
 def _auc_played(p: np.ndarray, y: np.ndarray) -> float:
-    """ROC-AUC for binary `played` from probability `p`. Mann-Whitney U formulation.
-    Avoid sklearn dep. Return 0.5 if class collapses."""
+    """ROC-AUC via Mann-Whitney U. No sklearn dep. 0.5 on class collapse."""
     pos = p[y == 1]
     neg = p[y == 0]
     if len(pos) == 0 or len(neg) == 0:
@@ -114,15 +113,14 @@ def _auc_played(p: np.ndarray, y: np.ndarray) -> float:
 
 
 def minutes_calibration_summary(pred: pd.DataFrame, n_bins: int = 10) -> pd.DataFrame:
-    """Calibration table for minutes/90 model.
+    """Calibration table for minutes / 90.
 
-    Return long-form rows mixing two row types tagged in `metric` column:
+    Long-form rows tagged in `metric` col:
 
-    - `metric='summary'`: aggregate row per scope (`all` / per position) with
-      regression MAE on minutes/90 plus binary-played classification AUC and
-      Brier score. Treat mins_pred as P(played).
-    - `metric='bin'`: reliability bin row. Actual `played` rate inside each
-      decile of mins_pred. Used for calibration plot or coverage gap check.
+    - metric='summary': aggregate per scope (all / per pos). MAE on minutes/90 +
+      binary-played AUC + Brier. mins_pred treated as P(played).
+    - metric='bin': reliability bin row. Actual `played` rate per decile of
+      mins_pred. Calibration plot / coverage gap check.
     """
     if pred.empty:
         return pd.DataFrame()
@@ -178,7 +176,7 @@ def minutes_calibration_summary(pred: pd.DataFrame, n_bins: int = 10) -> pd.Data
 
 
 def match_calibration_summary(pred: pd.DataFrame) -> pd.DataFrame:
-    """Per-side Poisson NLL + goal MAE + CS Brier + CS coverage. Return one frame."""
+    """Per-side Poisson NLL + goal MAE + CS Brier + CS coverage."""
     if pred.empty:
         return pd.DataFrame()
     rows = []
@@ -239,7 +237,7 @@ def write_markdown_report(path: Path, holdout: list[int],
                           minutes_cal: pd.DataFrame,
                           points_pred: pd.DataFrame, match_pred: pd.DataFrame,
                           minutes_pred: pd.DataFrame) -> None:
-    """Write single human-readable backtest report to `path`."""
+    """Write single human-readable backtest report to path."""
     lines = [
         "# Walk-Forward Backtest Report",
         "",
@@ -310,8 +308,8 @@ def write_markdown_report(path: Path, holdout: list[int],
         "   under-fire — boom GWs are missed. Apply isotonic recalibration on residuals.",
         "2. **Position skew**: large gaps in one position only point to data scarcity",
         "   (FWD set is smallest at ~3k rows) or feature inadequacy for that position.",
-        "3. **Match `cs_rate_gap`**: persistent positive gap ⇒ DC ρ may be too negative",
-        "   (over-rewards 0–0); negative gap ⇒ ρ too high. Tune `DC_RHO`.",
+        "3. **Match `cs_rate_gap`**: marginal Poisson calibration. DC ρ does NOT move",
+        "   marginals (τ conserves row/column sums) — tune ρ on joint NLL via tune_dc_rho.py.",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")

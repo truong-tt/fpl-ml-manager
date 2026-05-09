@@ -30,8 +30,14 @@ def train_match_models(
         m.save_model(DATA_DIR / f"xgb_{side}_goals.json")
 
 
-def _dc_tau(x: int, y: int, lh: float, la: float, rho: float = DC_RHO) -> float:
-    """Dixon-Coles τ correction. Low scoring outcomes (0-0, 0-1, 1-0, 1-1)."""
+def _dc_tau(x: int, y: int, lh: float, la: float, rho: float | None = None) -> float:
+    """DC tau correction. Low-score corners (0,0)/(0,1)/(1,0)/(1,1).
+
+    rho=None reads module DC_RHO at call time. Default-arg `rho=DC_RHO` froze
+    value at def time → tune_dc_rho monkeypatch silently broke before fix.
+    """
+    if rho is None:
+        rho = DC_RHO
     if x == 0 and y == 0: return 1 - lh * la * rho
     if x == 0 and y == 1: return 1 + lh * rho
     if x == 1 and y == 0: return 1 + la * rho
@@ -40,7 +46,7 @@ def _dc_tau(x: int, y: int, lh: float, la: float, rho: float = DC_RHO) -> float:
 
 
 def score_matrix(lh: float, la: float, max_goals: int = 8) -> np.ndarray:
-    """DC-adjusted joint score probability matrix. Indexed [home_goals, away_goals]."""
+    """DC-adjusted joint score PMF. Indexed [home_goals, away_goals]."""
     ph = poisson.pmf(np.arange(max_goals + 1), lh)
     pa = poisson.pmf(np.arange(max_goals + 1), la)
     M = np.outer(ph, pa)
@@ -51,7 +57,7 @@ def score_matrix(lh: float, la: float, max_goals: int = 8) -> np.ndarray:
 
 
 def clean_sheet_probs(lh: float, la: float) -> tuple[float, float]:
-    """Return (home_CS, away_CS) analytically from DC score matrix."""
+    """(home_CS, away_CS) from DC score matrix marginals."""
     M = score_matrix(lh, la)
     return float(M[:, 0].sum()), float(M[0, :].sum())
 

@@ -12,6 +12,19 @@ SQUAD_SIZE, XI_SIZE, MAX_PER_CLUB = 15, 11, 3
 # DEF booms (CS+goal) correlated with team performance. MID/FWD upside uncorrelated.
 CAPTAIN_POSITIONS = {3, 4}
 
+# RHC attenuation. Solver sees H=8 GWs, weights GW 6/7/8 by 0.6/0.4/0.2 — long-
+# tail fixture-swing matters (Liverpool Apr-May, Arsenal run-in) but estimates
+# noisy that far. Hits cost NOT attenuated: -4 = -4 regardless of distance.
+DEFAULT_ATTENUATION = [1.0, 1.0, 1.0, 1.0, 1.0, 0.6, 0.4, 0.2]
+
+
+def _attenuation_weights(gws: list[int], att: list[float] | None) -> dict[int, float]:
+    """Map each GW in horizon to attenuation weight. Pad / truncate to len(gws)."""
+    profile = list(att) if att is not None else list(DEFAULT_ATTENUATION)
+    if len(profile) < len(gws):
+        profile = profile + [profile[-1]] * (len(gws) - len(profile))
+    return {t: float(profile[k]) for k, t in enumerate(gws)}
+
 
 def _gws(proj: pd.DataFrame) -> list[int]:
     """Sorted GW list from xp_{t} columns."""
@@ -58,8 +71,9 @@ def solve_initial_squad(
     proj: pd.DataFrame, budget: float = 100.0,
     lambda_var: float = 0.02, lambda_eo: float = 0.0,
     bench_weight: float = 0.15, time_limit: int = 60,
+    attenuation: list[float] | None = None,
 ) -> pd.DataFrame:
-    """Cold-start 15-man squad + per-GW XI/captain over full horizon."""
+    """Cold-start 15-man squad + per-GW XI/captain over horizon."""
     if proj.empty:
         return pd.DataFrame()
     proj = proj.copy().set_index("id")
@@ -68,6 +82,7 @@ def solve_initial_squad(
         return pd.DataFrame()
     ids = list(proj.index)
     n_gw = len(gws)
+    att = _attenuation_weights(gws, attenuation)
 
     prob = pulp.LpProblem("FPL_Init", pulp.LpMaximize)
     x = {i: pulp.LpVariable(f"x_{i}", cat="Binary") for i in ids}
@@ -76,14 +91,16 @@ def solve_initial_squad(
 
     obj = 0
     for t in gws:
+        w = att[t]
         for i in ids:
             xp = float(proj.loc[i, f"xp_{t}"])
             cap_xp = float(proj.loc[i, f"cap_xp_{t}"])
             var = float(proj.loc[i, f"var_{t}"])
             eo = float(proj.loc[i, "eo"])
-            obj += xp * s[i][t] + bench_weight * xp * (x[i] - s[i][t]) + cap_xp * c[i][t]
-            obj += -(lambda_var * var / n_gw) * x[i]
-            obj += (lambda_eo * xp * (1.0 - eo) / n_gw) * x[i]
+            obj += w * (xp * s[i][t] + bench_weight * xp * (x[i] - s[i][t])
+                        + cap_xp * c[i][t])
+            obj += -(w * lambda_var * var / n_gw) * x[i]
+            obj += (w * lambda_eo * xp * (1.0 - eo) / n_gw) * x[i]
     prob += obj
 
     prob += pulp.lpSum(x[i] for i in ids) == SQUAD_SIZE
@@ -110,6 +127,7 @@ def solve_rhc_transfers(
     proj: pd.DataFrame, current_squad_ids: set[int],
     bank: float, free_transfers: int, lambda_var: float = 0.02,
     lambda_eo: float = 0.0, bench_weight: float = 0.15, time_limit: int = 180,
+    attenuation: list[float] | None = None,
 ) -> dict[str, Any]:
     """Receding-horizon transfer planner. Return this-GW squad / XI / captain / transfers."""
     if proj.empty:
@@ -119,6 +137,7 @@ def solve_rhc_transfers(
     if not gws:
         return {"status": "no_horizon"}
     ids = list(proj.index)
+    att = _attenuation_weights(gws, attenuation)
 
     prob = pulp.LpProblem("FPL_RHC", pulp.LpMaximize)
     x = {i: {t: pulp.LpVariable(f"x_{i}_{t}", cat="Binary") for t in gws} for i in ids}
@@ -131,14 +150,17 @@ def solve_rhc_transfers(
 
     obj = 0
     for t in gws:
+        w = att[t]
         for i in ids:
             xp = float(proj.loc[i, f"xp_{t}"])
             cap_xp = float(proj.loc[i, f"cap_xp_{t}"])
             var = float(proj.loc[i, f"var_{t}"])
             eo = float(proj.loc[i, "eo"])
-            obj += xp * s[i][t] + bench_weight * xp * (x[i][t] - s[i][t]) + cap_xp * c[i][t]
-            obj += -lambda_var * var * x[i][t]
-            obj += lambda_eo * xp * (1.0 - eo) * x[i][t]
+            obj += w * (xp * s[i][t] + bench_weight * xp * (x[i][t] - s[i][t])
+                        + cap_xp * c[i][t])
+            obj += -w * lambda_var * var * x[i][t]
+            obj += w * lambda_eo * xp * (1.0 - eo) * x[i][t]
+    # Hits cost real, not attenuated.
     obj += -pulp.lpSum(4 * hits[t] for t in gws)
     prob += obj
 

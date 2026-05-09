@@ -1,9 +1,8 @@
-"""Walk-forward CV harness for points and match models.
+"""Walk-forward CV harness for points + match + minutes heads.
 
-For each holdout GW G in [start_gw, end_gw], retrain both models using only rows
-strictly before G. Predict on rows at G. Accumulate predictions for offline
-calibration audit in `calibration.py`. Write CSVs + markdown report under
-`data/processed/backtest/`.
+Per holdout GW G in [start_gw, end_gw]: retrain heads using rows strictly < G.
+Predict rows at G. Accumulate predictions for offline calibration audit in
+calibration.py. Write CSVs + markdown report under data/processed/backtest/.
 
 Rolling features in features.py shift-1 partitioned. Build feature frame once
 over full history = leakage-free, as long as target-bearing rows at round >= G
@@ -35,9 +34,15 @@ POINTS_ROUNDS = 400
 MATCH_PARAMS = dict(objective="count:poisson", learning_rate=0.05, max_depth=4,
                     subsample=0.85, colsample_bytree=0.85, verbosity=0)
 MATCH_ROUNDS = 200
-MINUTES_PARAMS = dict(objective="reg:logistic", learning_rate=0.05, max_depth=4,
-                      subsample=0.85, colsample_bytree=0.85, min_child_weight=20,
-                      reg_alpha=0.3, reg_lambda=1.5, verbosity=0)
+MINUTES_PLAYS_PARAMS = dict(objective="binary:logistic", eval_metric="logloss",
+                            learning_rate=0.05, max_depth=4,
+                            subsample=0.85, colsample_bytree=0.85,
+                            min_child_weight=20, reg_alpha=0.3, reg_lambda=1.5,
+                            verbosity=0)
+MINUTES_GIVEN_PARAMS = dict(objective="reg:logistic", learning_rate=0.05, max_depth=4,
+                            subsample=0.85, colsample_bytree=0.85,
+                            min_child_weight=20, reg_alpha=0.3, reg_lambda=1.5,
+                            verbosity=0)
 MINUTES_ROUNDS = 300
 
 
@@ -60,7 +65,7 @@ def _resolve_holdout(fixtures: pd.DataFrame, k: int,
 
 def _train_points_for_holdout(train: pd.DataFrame, feat_cols: list[str]
                               ) -> dict[int, dict[float, xgb.Booster]]:
-    """Train per-position × per-quantile boosters on train rows only."""
+    """Train per-pos x per-quantile boosters on train rows only."""
     models: dict[int, dict[float, xgb.Booster]] = {}
     train = train.copy()
     train["_pos"] = _row_pos(train)
@@ -83,7 +88,7 @@ def _predict_points(models: dict[int, dict[float, xgb.Booster]],
                     recalib: dict | None = None) -> pd.DataFrame:
     """Predict q10/q50/q90 with row-sort enforcement. Mirror train_points_model.
 
-    If `recalib` provided, apply per-(pos, alpha) affine map post-sort,
+    recalib provided → per-(pos, alpha) iso/affine map applied post-sort,
     re-enforce non-crossing.
     """
     out = pd.DataFrame(0.0, index=test.index, columns=["q10_pred", "q50_pred", "q90_pred"])
@@ -101,7 +106,7 @@ def _predict_points(models: dict[int, dict[float, xgb.Booster]],
     vals.sort(axis=1)
     out[["q10_pred", "q50_pred", "q90_pred"]] = vals
     if recalib is not None:
-        # Reuse public apply path. Rename columns to match q10/q50/q90 schema.
+        # Reuse public apply path. Rename cols to match q10/q50/q90 schema.
         from recalibrate_points import apply_recalib
         renamed = out.rename(columns={"q10_pred": "q10", "q50_pred": "q50", "q90_pred": "q90"})
         renamed = apply_recalib(recalib, pos_series.values, renamed)
@@ -113,10 +118,10 @@ def walk_forward_points(holdout_gws: list[int], history: pd.DataFrame,
                         fixtures: pd.DataFrame, players: pd.DataFrame,
                         teams: pd.DataFrame,
                         recalib: dict | None = None) -> pd.DataFrame:
-    """Per holdout GW, train on round < G. Predict on round == G.
+    """Per holdout GW, train on round < G, predict round == G.
 
-    Return long frame: gw, player_id, pos_id, q10_pred, q50_pred, q90_pred, y.
-    If `recalib` supplied, apply after raw quantile prediction.
+    Long frame: gw, player_id, pos_id, q10_pred, q50_pred, q90_pred, y.
+    recalib applied after raw quantile prediction.
     """
     fixture_feats = build_match_features(fixtures, history, teams)
     all_feats = build_player_features(history, players, fixture_feats).dropna(subset=["target"])
@@ -147,7 +152,7 @@ def walk_forward_points(holdout_gws: list[int], history: pd.DataFrame,
 
 def walk_forward_match(holdout_gws: list[int], fixtures: pd.DataFrame,
                        history: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
-    """Per holdout GW, train Poisson home/away on event < G. Predict event == G.
+    """Per holdout GW, train Poisson home/away on event < G, predict event == G.
 
     Return: gw, fixture_id, team_h, team_a, lambda_h, lambda_a, gh, ga, cs_h_p,
     cs_a_p, cs_h_actual, cs_a_actual.
@@ -204,11 +209,10 @@ def walk_forward_minutes(holdout_gws: list[int], history: pd.DataFrame,
                          fixtures: pd.DataFrame, players: pd.DataFrame,
                          teams: pd.DataFrame,
                          recalib: dict | None = None) -> pd.DataFrame:
-    """Per holdout GW G, train minutes/90 regressor on round < G. Predict on G.
+    """Per holdout GW G, train two-stage minutes head on round < G. Predict G.
 
-    Return long frame: gw, player_id, pos_id, mins_pred (∈[0,1]), mins_actual (raw),
-    played (1 if mins_actual > 0). Training target = clip(minutes, 0, 90)/90.
-    If `recalib` supplied, apply per-pos isotonic after raw prediction.
+    Long frame: gw, player_id, pos_id, plays_pred, mins_when_played_pred,
+    mins_pred, mins_actual, played. recalib applied per-pos isotonic after raw.
     """
     fixture_feats = build_match_features(fixtures, history, teams)
     all_feats = build_player_features(history, players, fixture_feats)
@@ -217,6 +221,7 @@ def walk_forward_minutes(holdout_gws: list[int], history: pd.DataFrame,
 
     all_feats = all_feats.copy()
     all_feats["mins_target"] = (all_feats["minutes"].clip(upper=90) / 90.0).clip(0.0, 1.0)
+    all_feats["played"] = (all_feats["minutes"] > 0).astype(int)
     feat_cols = minutes_feature_cols()
     pos_series_all = _row_pos(all_feats)
 
@@ -228,19 +233,39 @@ def walk_forward_minutes(holdout_gws: list[int], history: pd.DataFrame,
             continue
         Xtr = train[feat_cols].astype(float).fillna(0.0)
         Xte = test[feat_cols].astype(float).fillna(0.0)
-        ytr = train["mins_target"].astype(float)
-        m = xgb.train(MINUTES_PARAMS, xgb.DMatrix(Xtr, label=ytr),
-                      num_boost_round=MINUTES_ROUNDS)
-        pred = np.clip(m.predict(xgb.DMatrix(Xte)), 0.0, 1.0)
+
+        # Two-stage: P(plays) on full train, E[mins/90 | plays=1] on played-only.
+        # Combined `mins_pred = plays * mins_when_played` matches prior single-
+        # head signature so consumers (engine, recalib audit) keep working.
+        plays_m = xgb.train(MINUTES_PLAYS_PARAMS,
+                            xgb.DMatrix(Xtr, label=train["played"].astype(int)),
+                            num_boost_round=MINUTES_ROUNDS)
+        played_mask_tr = train["played"] == 1
+        mins_when_played_pred = np.zeros(len(test))
+        if played_mask_tr.sum() >= 200:
+            Xtr_p = Xtr.loc[played_mask_tr]
+            ytr_p = train.loc[played_mask_tr, "mins_target"].astype(float)
+            mins_m = xgb.train(MINUTES_GIVEN_PARAMS,
+                               xgb.DMatrix(Xtr_p, label=ytr_p),
+                               num_boost_round=MINUTES_ROUNDS)
+            mins_when_played_pred = np.clip(
+                mins_m.predict(xgb.DMatrix(Xte)), 0.0, 1.0)
+
+        plays_pred = np.clip(plays_m.predict(xgb.DMatrix(Xte)), 0.0, 1.0)
+        pred = plays_pred * mins_when_played_pred
+
         pos_arr = pos_series_all.loc[test.index].astype(int).values
         if recalib is not None:
             from recalibrate_minutes import apply_recalib as _apply_min
             pred = _apply_min(recalib, pos_arr, pred)
+        pred = np.clip(pred, 0.0, 1.0)
         mins_actual = test["minutes"].astype(float).values
         chunks.append(pd.DataFrame({
             "gw": gw,
             "player_id": test["player_id"].astype(int).values,
             "pos_id": pos_arr,
+            "plays_pred": plays_pred,
+            "mins_when_played_pred": mins_when_played_pred,
             "mins_pred": pred,
             "mins_actual": mins_actual,
             "played": (mins_actual > 0).astype(int),
@@ -249,7 +274,7 @@ def walk_forward_minutes(holdout_gws: list[int], history: pd.DataFrame,
 
 
 def _parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Walk-forward CV for points + match models")
+    p = argparse.ArgumentParser(description="Walk-forward CV for points + match + minutes")
     p.add_argument("--k", type=int, default=5,
                    help="Trailing finished GWs to hold out. Default 5")
     p.add_argument("--start", type=int, default=None, help="Holdout start GW. Inclusive")
@@ -258,9 +283,9 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--skip-match", action="store_true", help="Skip match walk-forward")
     p.add_argument("--skip-minutes", action="store_true", help="Skip minutes walk-forward")
     p.add_argument("--recalib", type=Path, default=None,
-                   help="Path to points_recalib.json. Apply after raw quantile prediction")
+                   help="points_recalib.json. Apply after raw quantile pred")
     p.add_argument("--minutes-recalib", type=Path, default=None,
-                   help="Path to minutes_recalib.json. Apply per-pos isotonic to mins_pred")
+                   help="minutes_recalib.json. Apply per-pos isotonic to mins_pred")
     return p.parse_args()
 
 

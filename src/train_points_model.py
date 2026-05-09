@@ -1,4 +1,4 @@
-"""Per-position XGBoost quantile regressors. q10/q50/q90 × {GK, DEF, MID, FWD}."""
+"""Per-pos XGBoost quantile regressors. q10/q50/q90 x {GK, DEF, MID, FWD}."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,7 +18,7 @@ def _model_file(q: float, pos: int) -> str:
 
 
 def _pos_feature_cols() -> list[str]:
-    """Drop pos one-hots. Constant within each per-position model."""
+    """Drop pos one-hots. Constant within per-pos model."""
     return [c for c in points_feature_cols() if not c.startswith("pos_")]
 
 
@@ -28,7 +28,7 @@ def _row_pos(df: pd.DataFrame) -> pd.Series:
 
 
 def train_points_models() -> None:
-    """Train + serialize 4 positions × 3 quantiles = 12 boosters under data/."""
+    """Train + serialize 4 pos x 3 quantiles = 12 boosters under data/."""
     fx = pd.read_csv(DATA_DIR / "fixtures.csv")
     hist = pd.read_csv(DATA_DIR / "history.csv")
     players = pd.read_csv(DATA_DIR / "players.csv")
@@ -49,7 +49,7 @@ def train_points_models() -> None:
         X = sub[feat_cols].astype(float).fillna(0.0)
         y = sub["target"].astype(float)
         for q in QUANTILES:
-            # Per-pos sets small (~3k for FWD). Strong regularization keeps q90 credible.
+            # Per-pos sets small (~3k FWD). Strong reg keeps q90 credible.
             params = dict(objective="reg:quantileerror", quantile_alpha=q,
                           learning_rate=0.03, max_depth=3, subsample=0.8,
                           colsample_bytree=0.8, min_child_weight=30,
@@ -59,7 +59,7 @@ def train_points_models() -> None:
 
 
 def load_points_models() -> dict[int, dict[float, xgb.Booster]] | None:
-    """Load {pos: {q: booster}}. Return None if any file missing."""
+    """Load {pos: {q: booster}}. None if any file missing."""
     out: dict[int, dict[float, xgb.Booster]] = {}
     for pos in POSITIONS:
         out[pos] = {}
@@ -77,10 +77,10 @@ def predict_quantiles(
     models: dict[int, dict[float, xgb.Booster]], X: pd.DataFrame,
     apply_recalib: bool = True,
 ) -> pd.DataFrame:
-    """Route each row to its position booster. Enforce non-crossing q10≤q50≤q90.
+    """Route row to pos booster. Enforce non-crossing q10<=q50<=q90.
 
-    If `apply_recalib` and `data/points_recalib.json` exists, apply per-(pos, alpha)
-    affine map fit by `recalibrate.py` after raw prediction, before sanity clip.
+    apply_recalib + data/points_recalib.json present → per-(pos, alpha) iso/affine
+    map applied post-sort, before sanity clip.
     """
     feat_cols = _pos_feature_cols()
     out = pd.DataFrame(0.0, index=X.index, columns=["q10", "q50", "q90"])
@@ -104,7 +104,7 @@ def predict_quantiles(
         if coef is not None:
             out = _apply(coef, pos_series.values, out)
 
-    # Sanity ceiling. Credible single-GW boom tops ~25 (hat-trick+assist+bonus).
+    # Sanity ceiling. Credible single-GW boom ~25 (hat-trick + assist + bonus).
     return out.clip(lower=-3.0, upper=25.0)
 
 
