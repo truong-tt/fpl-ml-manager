@@ -25,6 +25,7 @@ import xgboost as xgb
 
 from features import (build_match_features, build_player_features,
                       points_feature_cols)
+from train_points_model import _monotone_constraints
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 QUANTILES = [0.10, 0.50, 0.90]
@@ -39,7 +40,12 @@ def _model_path(alpha: float) -> Path:
 
 
 def train_bonus_model() -> None:
-    """Train + serialize 3 quantile boosters on bonus target."""
+    """Train + serialize 3 quantile boosters on bonus target.
+
+    Played-only filter. DNP rows have bonus=0 by definition (BPS requires
+    minutes). Including them collapses quantiles toward 0. Engine gates final
+    bonus contribution via P(plays) from minutes head.
+    """
     fx = pd.read_csv(DATA_DIR / "fixtures.csv")
     hist = pd.read_csv(DATA_DIR / "history.csv")
     players = pd.read_csv(DATA_DIR / "players.csv")
@@ -49,16 +55,21 @@ def train_bonus_model() -> None:
     train = build_player_features(hist, players, fixture_feats)
     if train.empty or "bonus" not in hist.columns:
         return
-
-    cols = points_feature_cols()
-    X = train[cols].astype(float).fillna(0.0)
     if "bonus" not in train.columns:
         train = train.merge(hist[["player_id", "fixture", "bonus"]],
                             on=["player_id", "fixture"], how="left")
+    if "minutes" in train.columns:
+        train = train[train["minutes"] > 0]
+    if train.empty:
+        return
+
+    cols = points_feature_cols()
+    X = train[cols].astype(float).fillna(0.0)
     y = pd.to_numeric(train["bonus"], errors="coerce").fillna(0.0).astype(float)
+    mono = _monotone_constraints(cols)
 
     for alpha in QUANTILES:
-        params = dict(PARAMS, quantile_alpha=alpha)
+        params = dict(PARAMS, quantile_alpha=alpha, monotone_constraints=mono)
         m = xgb.train(params, xgb.DMatrix(X, label=y), num_boost_round=ROUNDS)
         m.save_model(_model_path(alpha))
 

@@ -1,12 +1,19 @@
-name: FPL Weekly Update
+name: FPL Daily Update
 
+# Upstream FPL-Core-Insights dataset refreshes 2×/day at ~05:00 + 17:00 UTC.
+# Run pipeline 30 min after each refresh to consume latest CSVs.
 on:
   schedule:
-    - cron: '0 10 * * 3'  # Every Wednesday at 10:00 UTC
-  workflow_dispatch:       # Manual trigger
+    - cron: '30 5,17 * * *'  # 05:30 + 17:30 UTC daily
+  workflow_dispatch:          # Manual trigger
 
 permissions:
   contents: write
+
+# Avoid concurrent runs racing on git push if 05:30 run still in flight.
+concurrency:
+  group: fpl-update
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -28,7 +35,8 @@ jobs:
 
     - name: Run pipeline
       # main.py calls refresh_data() internally, trains any missing models,
-      # runs the optimizer, and writes data/processed/lineup.md
+      # auto-recalibrates points/minutes heads when JSON > RECALIB_STALE_DAYS,
+      # runs the optimizer, writes data/processed/lineup.md.
       run: python src/main.py
 
     - name: Publish lineup to Job Summary
@@ -39,8 +47,8 @@ jobs:
         git config --global user.name "FPL Bot"
         git config --global user.email "bot@noreply.github.com"
 
-        # Data CSVs, model artifacts (.json / .joblib), squad snapshot, lineup report
+        # Data CSVs, model artifacts, recalib JSONs, snapshot, lineup report.
         git add -f data/*.csv data/*.json data/processed/lineup.md data/processed/squad_snapshot.csv 2>/dev/null || true
 
-        git diff --staged --quiet || git commit -m "GW update $(date +'%Y-%m-%d')"
+        git diff --staged --quiet || git commit -m "Pipeline run $(date -u +'%Y-%m-%d %H:%M UTC')"
         git push

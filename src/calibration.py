@@ -93,6 +93,33 @@ def points_overall(pred: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+def combined_points_calibration_summary(pred: pd.DataFrame) -> pd.DataFrame:
+    """Coverage of (q*_pred + bonus_q*_pred) vs y_total = y + bonus_actual.
+
+    End-to-end audit of decoupled heads. Validates BONUS_BLEND=1.0. Empty if
+    bonus columns absent (older predictions).
+    """
+    needed = {"bonus_q10_pred", "bonus_q50_pred", "bonus_q90_pred", "y_total"}
+    if pred.empty or not needed.issubset(pred.columns):
+        return pd.DataFrame()
+    df = pred.copy()
+    for q in ("q10_pred", "q50_pred", "q90_pred"):
+        df[f"comb_{q}"] = df[q].astype(float) + df[f"bonus_{q}"].astype(float)
+    rows: list[dict] = []
+    for scope_name, sub in (("all", df), ("played", df[df.get("minutes", 0) > 0])):
+        if sub.empty:
+            continue
+        for alpha in QUANTILES:
+            qcol = f"comb_{QCOLS[alpha]}"
+            cov = float(np.mean(sub["y_total"].values <= sub[qcol].values))
+            pin = _pinball(sub["y_total"].values.astype(float),
+                           sub[qcol].values.astype(float), alpha)
+            rows.append({"scope": scope_name, "alpha": alpha, "n": len(sub),
+                         "coverage": cov, "coverage_gap": cov - alpha,
+                         "pinball_loss": pin})
+    return pd.DataFrame(rows)
+
+
 def _poisson_nll(y: np.ndarray, lam: np.ndarray, eps: float = 1e-9) -> float:
     """Mean Poisson NLL. gammaln for log(y!)."""
     lam = np.maximum(lam, eps)
@@ -266,6 +293,15 @@ def write_markdown_report(path: Path, holdout: list[int],
         lines.append(_md_table(points_overall(points_pred)))
     else:
         lines.append("_no points predictions_")
+
+    combined = combined_points_calibration_summary(points_pred) if not points_pred.empty else pd.DataFrame()
+    if not combined.empty:
+        lines += ["", "## Combined points + bonus calibration",
+                  "",
+                  "Coverage of `q*_pred + bonus_q*_pred` vs `total_points`. ",
+                  "End-to-end check of decoupled heads under BONUS_BLEND=1.0.",
+                  ""]
+        lines.append(_md_table(combined))
 
     lines += ["", "## Minutes-model calibration", ""]
     if not minutes_cal.empty:

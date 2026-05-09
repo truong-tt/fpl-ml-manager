@@ -1,6 +1,7 @@
 """GH Actions entrypoint. Refresh data, train missing models, solve, write lineup.md."""
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -11,7 +12,7 @@ from data_loader import SEASON, main as refresh_data
 from fpl_engine import FPLEngine
 from optimizer import solve_initial_squad, solve_rhc_transfers
 from train_bonus_model import train_bonus_model
-from train_match_model import train_match_models
+from train_match_model import compute_fixture_lambdas, train_match_models
 from train_minutes_model import train_minutes_model
 from train_points_model import train_points_models
 
@@ -24,6 +25,14 @@ HORIZON = 8
 # Set 0.0 if solver still under-invests in premiums.
 LAMBDA_VAR, LAMBDA_EO, BENCH_WEIGHT = 0.05, 0.0, 0.15
 POS = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
+
+# Auto-recalibration cadence. Pipeline runs 2×/day on data-source refresh, but
+# walk-forward retrain is expensive (~minutes) and recalib drift is slow. Re-fit
+# only when JSON older than N days OR missing. Manual override: delete the JSON.
+RECALIB_STALE_DAYS = 14
+RECALIB_HOLDOUT_K = 8
+POINTS_RECALIB_PATH = DATA_DIR / "points_recalib.json"
+MINUTES_RECALIB_PATH = DATA_DIR / "minutes_recalib.json"
 
 
 def _md_table(df: pd.DataFrame) -> str:
@@ -46,9 +55,14 @@ def _current_gw(fixtures: pd.DataFrame) -> int:
 
 
 def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) -> None:
-    """Train missing match / points / minutes / bonus artifacts."""
+    """Train missing match / points / minutes / bonus artifacts.
+
+    Match → fixture λ → points + bonus. λ feeds points feature schema, so
+    refresh fixture_lambdas.csv any time match models present (cheap).
+    """
     if not all((DATA_DIR / f).exists() for f in ("xgb_home_goals.json", "xgb_away_goals.json")):
         train_match_models(fx, hist, teams)
+    compute_fixture_lambdas(fx, hist, teams)
     points_files = [f"xgb_points_q{q:02d}_p{p}.json"
                     for q in (10, 50, 90) for p in (1, 2, 3, 4)]
     if not all((DATA_DIR / f).exists() for f in points_files):
@@ -60,6 +74,61 @@ def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) ->
     bonus_files = [f"xgb_bonus_q{q:02d}.json" for q in (10, 50, 90)]
     if not all((DATA_DIR / f).exists() for f in bonus_files):
         train_bonus_model()
+
+
+def _recalib_stale(path: Path, max_age_days: int = RECALIB_STALE_DAYS) -> bool:
+    """True if recalib JSON missing or older than max_age_days."""
+    if not path.exists():
+        return True
+    age_days = (time.time() - path.stat().st_mtime) / 86400.0
+    return age_days > max_age_days
+
+
+def _maybe_recalibrate(fixtures: pd.DataFrame, history: pd.DataFrame,
+                       players: pd.DataFrame, teams: pd.DataFrame) -> None:
+    """Re-fit points + minutes recalib JSONs if stale.
+
+    Walk-forward retrain runs on last RECALIB_HOLDOUT_K finished GWs. Outputs
+    consumed by predict_quantiles / predict_minutes auto-load on next inference
+    pass within same process — but they cache via load_*_models, so recalib is
+    re-read at next model-load. Engine constructed AFTER this call.
+    """
+    points_stale = _recalib_stale(POINTS_RECALIB_PATH)
+    minutes_stale = _recalib_stale(MINUTES_RECALIB_PATH)
+    if not (points_stale or minutes_stale):
+        return
+
+    # Lazy imports. Backtest pulls xgb + heavy training stack.
+    from backtest import (_resolve_holdout, walk_forward_minutes,
+                          walk_forward_points)
+    from recalibrate_minutes import fit_minutes_recalib
+    from recalibrate_minutes import save_recalib as save_min_recalib
+    from recalibrate_points import fit_points_recalib
+    from recalibrate_points import save_recalib as save_pts_recalib
+
+    try:
+        holdout = _resolve_holdout(fixtures, RECALIB_HOLDOUT_K, None, None)
+    except RuntimeError:
+        print("recalib skipped: no finished GWs available")
+        return
+    if not holdout:
+        print("recalib skipped: empty holdout")
+        return
+    print(f"recalib: walk-forward over GWs {holdout}")
+
+    if points_stale:
+        pred = walk_forward_points(holdout, history, fixtures, players, teams)
+        if not pred.empty:
+            coef = fit_points_recalib(pred, played_only=True)
+            save_pts_recalib(coef, POINTS_RECALIB_PATH)
+            print(f"recalib points -> {POINTS_RECALIB_PATH}")
+
+    if minutes_stale:
+        pred = walk_forward_minutes(holdout, history, fixtures, players, teams)
+        if not pred.empty:
+            coef = fit_minutes_recalib(pred)
+            save_min_recalib(coef, MINUTES_RECALIB_PATH)
+            print(f"recalib minutes -> {MINUTES_RECALIB_PATH}")
 
 
 def _load_prior() -> tuple[set[int], float, int] | None:
@@ -150,6 +219,7 @@ def main() -> None:
     teams = pd.read_csv(DATA_DIR / "teams.csv")
 
     _ensure_models(fixtures, history, teams)
+    _maybe_recalibrate(fixtures, history, players, teams)
     engine = FPLEngine(fixtures, history, players, teams)
     gw = _current_gw(fixtures)
     proj = engine.build_projections(gw, horizon=HORIZON)

@@ -12,10 +12,14 @@ SQUAD_SIZE, XI_SIZE, MAX_PER_CLUB = 15, 11, 3
 # DEF booms (CS+goal) correlated with team performance. MID/FWD upside uncorrelated.
 CAPTAIN_POSITIONS = {3, 4}
 
-# RHC attenuation. Solver sees H=8 GWs, weights GW 6/7/8 by 0.6/0.4/0.2 — long-
-# tail fixture-swing matters (Liverpool Apr-May, Arsenal run-in) but estimates
-# noisy that far. Hits cost NOT attenuated: -4 = -4 regardless of distance.
-DEFAULT_ATTENUATION = [1.0, 1.0, 1.0, 1.0, 1.0, 0.6, 0.4, 0.2]
+# RHC attenuation. Geometric discount γ^k over horizon — standard MPC form.
+# γ=0.85 → 8-GW profile [1.00, 0.85, 0.72, 0.61, 0.52, 0.44, 0.38, 0.32].
+# Long-tail fixture-swing info still feeds plan (Liverpool Apr-May, Arsenal
+# run-in) but trusted less the further out we look. Hits cost NOT attenuated:
+# -4 = -4 regardless of horizon distance.
+RHC_DISCOUNT = 0.85
+RHC_HORIZON = 8
+DEFAULT_ATTENUATION = [RHC_DISCOUNT ** k for k in range(RHC_HORIZON)]
 
 
 def _attenuation_weights(gws: list[int], att: list[float] | None) -> dict[int, float]:

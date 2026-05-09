@@ -5,8 +5,17 @@ team GW1 row in season N never sees season N-1 data.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+
+# Match-model-predicted fixture λ + DC CS prob. Optional. Built by
+# train_match_model.compute_fixture_lambdas → main pipeline writes after match
+# trains. Absent on cold start → neutral defaults (avg PL goals, baseline CS).
+FIXTURE_LAMBDAS_FILE = Path(__file__).resolve().parent.parent / "data" / "fixture_lambdas.csv"
+LAMBDA_DEFAULT = 1.4
+CS_PROB_DEFAULT = 0.30
 
 TEAM_WINDOWS = [3, 5, 10]
 # Used only when FPL-CI home_team_elo / away_team_elo absent or null.
@@ -176,6 +185,18 @@ def build_match_features(
     fx["xga_diff_5"] = fx["h_xga_5"] - fx["a_xga_5"]
     fx["oxg_diff"] = fx[f"h_oxg_{OPTA_WINDOW}"] - fx[f"a_oxg_{OPTA_WINDOW}"]
     fx["oxga_diff"] = fx[f"h_oxga_{OPTA_WINDOW}"] - fx[f"a_oxga_{OPTA_WINDOW}"]
+
+    # Match-model λ + DC CS prob. Structurally novel (DC correction not derivable
+    # from rolling team stats). Neutral default if file absent.
+    if FIXTURE_LAMBDAS_FILE.exists() and "id" in fx.columns:
+        lam = pd.read_csv(FIXTURE_LAMBDAS_FILE)
+        fx = fx.merge(lam, on="id", how="left", suffixes=("", "_lam"))
+    for col, default in (("lambda_h", LAMBDA_DEFAULT), ("lambda_a", LAMBDA_DEFAULT),
+                          ("cs_h_p", CS_PROB_DEFAULT), ("cs_a_p", CS_PROB_DEFAULT)):
+        if col not in fx.columns:
+            fx[col] = default
+        else:
+            fx[col] = pd.to_numeric(fx[col], errors="coerce").fillna(default)
     return fx
 
 
@@ -224,6 +245,17 @@ def build_player_features(
                   .fillna(0.0)
             )
 
+    # Player attack share. share = player_roll{w}_X / sum_team_roll{w}_X. Net new
+    # info booster cannot derive from per-player rolling alone — captures role
+    # within team's offense (15% of Liverpool's xGI ≠ 15% of Burnley's).
+    if "team" in df.columns:
+        share_eps = 1e-3
+        for w in (5, 10):
+            for short in ("xg", "xa", "xgi"):
+                col = f"roll{w}_{short}"
+                team_sum = df.groupby(["season", "team", "round"])[col].transform("sum")
+                df[f"{col}_share"] = df[col] / (team_sum + share_eps)
+
     meta = players[[
         "id", "element_type", "team",
         "penalties_order", "direct_freekicks_order",
@@ -238,7 +270,9 @@ def build_player_features(
 
     fx = fixture_feats[["id", "event", "team_h", "team_a",
                         "h_xg_5", "a_xg_5", "h_xga_5", "a_xga_5",
-                        "elo_h_pre", "elo_a_pre"]].rename(columns={"id": "fixture"})
+                        "elo_h_pre", "elo_a_pre",
+                        "lambda_h", "lambda_a", "cs_h_p", "cs_a_p"]].rename(
+        columns={"id": "fixture"})
     df = df.merge(fx, on="fixture", how="left")
     df["is_home"] = (df["team_id"] == df["team_h"]).astype(int)
     df["opp_xg_5"] = np.where(df["is_home"] == 1, df["a_xg_5"], df["h_xg_5"]).astype(float)
@@ -246,7 +280,16 @@ def build_player_features(
     df["own_elo"] = np.where(df["is_home"] == 1, df["elo_h_pre"], df["elo_a_pre"]).astype(float)
     df["opp_elo"] = np.where(df["is_home"] == 1, df["elo_a_pre"], df["elo_h_pre"]).astype(float)
     df["elo_gap"] = df["own_elo"] - df["opp_elo"]
-    df["target"] = df["total_points"].astype(float)
+    # Side-conditioned match-model λ. own_lambda_for = expected goals BY my team
+    # (offensive proxy). own_lambda_against = expected goals AGAINST my team
+    # (defensive proxy, drives CS prob). own_cs_p = DC-corrected clean sheet prob.
+    df["own_lambda_for"] = np.where(df["is_home"] == 1, df["lambda_h"], df["lambda_a"]).astype(float)
+    df["own_lambda_against"] = np.where(df["is_home"] == 1, df["lambda_a"], df["lambda_h"]).astype(float)
+    df["own_cs_p"] = np.where(df["is_home"] == 1, df["cs_h_p"], df["cs_a_p"]).astype(float)
+    # target = total_points - bonus. Bonus head adds back at engine w/ BONUS_BLEND=1.0.
+    # Removes double-count (points head learning partial bonus + bonus head adding it).
+    bonus = pd.to_numeric(df.get("bonus", 0.0), errors="coerce").fillna(0.0).astype(float)
+    df["target"] = df["total_points"].astype(float) - bonus
     return df
 
 
@@ -255,11 +298,13 @@ def points_feature_cols() -> list[str]:
     base = ["pos_1", "pos_2", "pos_3", "pos_4",
             "is_home", "is_pen_taker", "is_fk_taker",
             "lag1_min", "lag2_min", "lag3_min",
-            "opp_xg_5", "opp_xga_5", "opp_elo", "own_elo", "elo_gap"]
+            "opp_xg_5", "opp_xga_5", "opp_elo", "own_elo", "elo_gap",
+            "own_lambda_for", "own_lambda_against", "own_cs_p"]
     for w in (5, 10):
         base += [f"roll{w}_{k}" for k in
                  ("xg", "xa", "xgi", "bps", "ict", "saves", "cbi", "tkl", "rec",
                   "oxg", "oxa", "occ", "otob", "osh", "odrib")]
+        base += [f"roll{w}_{k}_share" for k in ("xg", "xa", "xgi")]
     return base
 
 

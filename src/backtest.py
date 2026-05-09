@@ -22,7 +22,8 @@ from features import (build_match_features, build_player_features,
                       match_feature_cols, minutes_feature_cols,
                       points_feature_cols)
 from train_match_model import score_matrix
-from train_points_model import POSITIONS, QUANTILES, _pos_feature_cols, _row_pos
+from train_points_model import (POSITIONS, QUANTILES, _monotone_constraints,
+                                 _pos_feature_cols, _row_pos)
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 OUT_DIR = DATA_DIR / "processed" / "backtest"
@@ -65,10 +66,15 @@ def _resolve_holdout(fixtures: pd.DataFrame, k: int,
 
 def _train_points_for_holdout(train: pd.DataFrame, feat_cols: list[str]
                               ) -> dict[int, dict[float, xgb.Booster]]:
-    """Train per-pos x per-quantile boosters on train rows only."""
+    """Train per-pos x per-quantile boosters on train rows only.
+
+    Mirror prod monotone_constraints. Drift between backtest + prod head
+    silently invalidates calibration audits.
+    """
     models: dict[int, dict[float, xgb.Booster]] = {}
     train = train.copy()
     train["_pos"] = _row_pos(train)
+    mono = _monotone_constraints(feat_cols)
     for pos in POSITIONS:
         sub = train[train["_pos"] == pos]
         if len(sub) < 200:
@@ -77,7 +83,8 @@ def _train_points_for_holdout(train: pd.DataFrame, feat_cols: list[str]
         y = sub["target"].astype(float)
         models[pos] = {}
         for q in QUANTILES:
-            params = {**POINTS_PARAMS, "quantile_alpha": q}
+            params = {**POINTS_PARAMS, "quantile_alpha": q,
+                      "monotone_constraints": mono}
             m = xgb.train(params, xgb.DMatrix(X, label=y), num_boost_round=POINTS_ROUNDS)
             models[pos][q] = m
     return models
@@ -114,6 +121,40 @@ def _predict_points(models: dict[int, dict[float, xgb.Booster]],
     return out.clip(lower=-3.0, upper=25.0)
 
 
+def _train_bonus_for_holdout(train: pd.DataFrame, cols: list[str]
+                             ) -> dict[float, xgb.Booster]:
+    """3 quantile boosters on bonus target. Played-only train (caller filters)."""
+    out: dict[float, xgb.Booster] = {}
+    if "bonus" not in train.columns or len(train) < 200:
+        return out
+    X = train[cols].astype(float).fillna(0.0)
+    y = pd.to_numeric(train["bonus"], errors="coerce").fillna(0.0).astype(float)
+    mono = _monotone_constraints(cols)
+    for q in QUANTILES:
+        params = {**POINTS_PARAMS, "quantile_alpha": q, "monotone_constraints": mono}
+        out[q] = xgb.train(params, xgb.DMatrix(X, label=y), num_boost_round=POINTS_ROUNDS)
+    return out
+
+
+def _predict_bonus(models: dict[float, xgb.Booster], test: pd.DataFrame,
+                   cols: list[str]) -> pd.DataFrame:
+    """3 quantile bonus preds. Non-crossing, clip [0, 3]."""
+    out = pd.DataFrame(0.0, index=test.index,
+                       columns=["bonus_q10_pred", "bonus_q50_pred", "bonus_q90_pred"])
+    if not models:
+        return out
+    Xf = test[cols].astype(float).fillna(0.0)
+    dm = xgb.DMatrix(Xf)
+    qmap = {0.10: "bonus_q10_pred", 0.50: "bonus_q50_pred", 0.90: "bonus_q90_pred"}
+    for q, col in qmap.items():
+        if q in models:
+            out[col] = models[q].predict(dm)
+    vals = out[["bonus_q10_pred", "bonus_q50_pred", "bonus_q90_pred"]].values.copy()
+    vals.sort(axis=1)
+    out[["bonus_q10_pred", "bonus_q50_pred", "bonus_q90_pred"]] = vals
+    return out.clip(lower=0.0, upper=3.0)
+
+
 def walk_forward_points(holdout_gws: list[int], history: pd.DataFrame,
                         fixtures: pd.DataFrame, players: pd.DataFrame,
                         teams: pd.DataFrame,
@@ -121,31 +162,47 @@ def walk_forward_points(holdout_gws: list[int], history: pd.DataFrame,
     """Per holdout GW, train on round < G, predict round == G.
 
     Long frame: gw, player_id, pos_id, q10_pred, q50_pred, q90_pred, y.
+    + bonus_q*_pred + y_total cols (total_points target) for combined audit.
     recalib applied after raw quantile prediction.
     """
     fixture_feats = build_match_features(fixtures, history, teams)
     all_feats = build_player_features(history, players, fixture_feats).dropna(subset=["target"])
     if all_feats.empty:
         return pd.DataFrame()
+    if "bonus" not in all_feats.columns and "bonus" in history.columns:
+        all_feats = all_feats.merge(history[["player_id", "fixture", "bonus"]],
+                                    on=["player_id", "fixture"], how="left")
 
     feat_cols = _pos_feature_cols()
+    bonus_cols = points_feature_cols()  # bonus head uses full feat set incl pos_*
     pos_series_all = _row_pos(all_feats)
     chunks: list[pd.DataFrame] = []
+    # Played-only training rows. Mirror train_points_model.py — head = E[pts|played].
+    # Test split keeps DNPs so coverage audit reflects production gating semantics.
+    has_minutes = "minutes" in all_feats.columns
+    has_bonus = "bonus" in all_feats.columns
     for gw in holdout_gws:
         train = all_feats[all_feats["round"] < gw]
+        if has_minutes:
+            train = train[train["minutes"] > 0]
         test = all_feats[all_feats["round"] == gw]
         if train.empty or test.empty:
             continue
         models = _train_points_for_holdout(train, feat_cols)
         preds = _predict_points(models, test, feat_cols, recalib=recalib)
+        bonus_models = _train_bonus_for_holdout(train, bonus_cols) if has_bonus else {}
+        bonus_preds = _predict_bonus(bonus_models, test, bonus_cols)
+        bonus_actual = (pd.to_numeric(test.get("bonus", 0.0), errors="coerce")
+                        .fillna(0.0).astype(float).values)
         rec = pd.DataFrame({
             "gw": gw,
             "player_id": test["player_id"].astype(int).values,
             "pos_id": pos_series_all.loc[test.index].astype(int).values,
             "y": test["target"].astype(float).values,
+            "y_total": test["target"].astype(float).values + bonus_actual,
             "minutes": test["minutes"].astype(float).values if "minutes" in test.columns else 0.0,
         }, index=test.index)
-        rec = pd.concat([rec, preds], axis=1)
+        rec = pd.concat([rec, preds, bonus_preds], axis=1)
         chunks.append(rec.reset_index(drop=True))
     return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
 

@@ -3,7 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
 [![XGBoost](https://img.shields.io/badge/XGBoost-quantile_%2B_poisson-green.svg)](https://xgboost.readthedocs.io/)
 [![PuLP](https://img.shields.io/badge/PuLP-MILP%20%2B%20RHC-yellow.svg)](https://coin-or.github.io/pulp/)
-[![Schedule](https://img.shields.io/badge/GitHub_Actions-weekly-lightgrey.svg)](../.github/workflows/weekly_update.yml)
+[![Schedule](https://img.shields.io/badge/GitHub_Actions-2%C3%97daily-lightgrey.svg)](../.github/workflows/pipeline.yml)
 
 Data-driven agent. Pick + manage 15-player Fantasy Premier League squad end-to-end. Weekly pipeline: learn per-position per-player point distributions via quantile-regression gradient boosting; estimate match-level goal rates via Dixon–Coles-corrected Poisson; solve one joint MILP for squad + XI + captain over rolling horizon; schedule chips on top. Data: [olbauday/FPL-Core-Insights](https://github.com/olbauday/FPL-Core-Insights) CSVs (FPL API + Opta per-match stats + ClubElo, refreshed 2×/day) + thin live-FPL-API overlay for current-GW prices + injury status.
 
@@ -34,7 +34,7 @@ Data-driven agent. Pick + manage 15-player Fantasy Premier League squad end-to-e
 
 ## 1. System Architecture
 
-End-to-end pipeline. FPL-Core-Insights CSVs + live-FPL-API price overlay → weekly markdown report: squad, XI, captain, transfers, hits, chip recs.
+End-to-end pipeline. FPL-Core-Insights CSVs + live-FPL-API price overlay → markdown report: squad, XI, captain, transfers, hits, chip recs. Refreshed 2×/day on upstream data update.
 
 ```mermaid
 flowchart TD
@@ -45,7 +45,7 @@ flowchart TD
     E["3b. Points Model<br/>src/train_points_model.py<br/>4 positions × 3 quantiles = 12 XGBoost regressors"]
     M["3c. Minutes Model<br/>src/train_minutes_model.py<br/>two-stage P(plays) × E[mins/90 | plays]"]
     N["3d. Bonus Head<br/>src/train_bonus_model.py<br/>3-quantile XGBoost on FPL bonus column"]
-    F["4. Inference Engine<br/>src/fpl_engine.py<br/>joint MC aggregation: μ (Pearson-Tukey), s (std), cap_xp"]
+    F["4. Inference Engine<br/>src/fpl_engine.py<br/>joint MC aggregation: μ (Swanson), s (std), cap_xp"]
     G["5. MILP Optimizer<br/>src/optimizer.py<br/>squad × XI × captain over horizon H = 8 (RHC + attenuation)"]
     H["6. Chip Scheduler<br/>src/chips.py<br/>greedy TC / BB / FH / WC heuristics"]
     I["lineup.md + squad_snapshot.csv"]
@@ -61,7 +61,7 @@ flowchart TD
     F --> G --> H --> I
 ```
 
-Model artifacts (Poisson + quantile boosters) + intermediate CSVs persist under `data/`. Subsequent runs retrain only on missing artifacts. GitHub Actions workflow [.github/workflows/weekly_update.yml](../.github/workflows/weekly_update.yml) re-runs pipeline every Wed 10:00 UTC.
+Model artifacts (Poisson + quantile boosters) + intermediate CSVs persist under `data/`. Subsequent runs retrain only on missing artifacts. GitHub Actions workflow [.github/workflows/pipeline.yml](../.github/workflows/pipeline.yml) re-runs pipeline twice daily — 05:30 + 17:30 UTC, 30 min after FPL-Core-Insights upstream refresh windows. Walk-forward recalibration (points + minutes heads) auto-fires when recalib JSONs older than `RECALIB_STALE_DAYS` (= 14) — see `_maybe_recalibrate` in [src/main.py](../src/main.py).
 
 ---
 
@@ -161,7 +161,7 @@ FPL points per player per GW: discrete, heavy-tailed, bimodal (zero on DNP + wid
 | Quantile | Use in optimizer |
 |---|---|
 | q10 (downside floor) | Risk budgeting, spread estimate |
-| q50 (central mass) | Median anchor — combined with q10 / q90 into Pearson–Tukey mean (§4.4) for the optimizer's μ |
+| q50 (central mass) | Median anchor — combined with q10 / q90 into Swanson mean (§4.4) for the optimizer's μ |
 | q90 (ceiling) | Triple Captain timing, spread estimate |
 
 Train **per-position** XGBoost regressors — one per (position $\times$ quantile) cell, $4 \times 3 = 12$ boosters total — `reg:quantileerror` objective, $\alpha \in \{0.10, 0.50, 0.90\}$. Directly minimizes pinball loss from [Regression Quantiles][ref-koenker]:
@@ -196,11 +196,13 @@ $$\hat{q}^{(i,t)}_\alpha = \sum_{f \in F_{i,t}} a_i \cdot \hat{q}^{(i,f)}_\alpha
 
 Blank GW: $F_{i,t} = \emptyset$ → $\hat{q}^{(i,t)}_\alpha = 0$. Double GW stacks both fixtures additively.
 
-### 4.4 Pearson–Tukey mean and dispersion
+### 4.4 Swanson mean and dispersion
 
-Optimizer needs scalar EV $\mu_{i,t}$ + scalar dispersion $\hat{s}_{i,t}$ per $(i, t)$. FPL points right-skewed (most weeks 1–2 pts, hauls 8–15 pts) so median $\hat{q}_{50}$ systematically under-shoots mean — summing medians across XI produced ~35-pt totals vs realistic 50–65-pt expectations. Use Pearson–Tukey 3-quantile mean estimator:
+Optimizer needs scalar EV $\mu_{i,t}$ + scalar dispersion $\hat{s}_{i,t}$ per $(i, t)$. FPL points right-skewed (most weeks 1–2 pts, hauls 8–15 pts) so median $\hat{q}_{50}$ systematically under-shoots mean — summing medians across XI produced ~35-pt totals vs realistic 50–65-pt expectations. Use Swanson / Keefer–Bodily 3-quantile estimator:
 
-$$\mu_{i,t} \;=\; \frac{\hat{q}^{(i,t)}_{10} \;+\; 4\,\hat{q}^{(i,t)}_{50} \;+\; \hat{q}^{(i,t)}_{90}}{6}$$
+$$\mu_{i,t} \;=\; 0.3\,\hat{q}^{(i,t)}_{10} \;+\; 0.4\,\hat{q}^{(i,t)}_{50} \;+\; 0.3\,\hat{q}^{(i,t)}_{90}$$
+
+Earlier revision used Simpson weights $(1, 4, 1)/6$ (mislabeled as "Pearson–Tukey"). Heavy median weight under-fired tail mean on right-skewed FPL points; Swanson 0.3/0.4/0.3 calibrated to lognormal-family distributions, lifts $\mu$ ~12 % on premium archetypes without disturbing rank order. Original Pearson–Tukey (1965) uses $0.185\,q_{05} + 0.63\,q_{50} + 0.185\,q_{95}$ — needs q05/q95 boosters that pinball-loss noise prohibits at 3k rows/position; Swanson is the canonical q10/q90 substitute.
 
 For dispersion, assume central mass approximately Gaussian for players expected to play → q10–q90 spans ~2.56 std devs ($\Phi^{-1}(0.9) - \Phi^{-1}(0.1) \approx 2.56$). Optimizer applies penalty linearly (CBC LP-only, quadratic term needs MIQP), so engine emits **standard deviation**, not its square:
 
@@ -210,7 +212,7 @@ Linear penalty `−λ·s` keeps risk term magnitude comparable to EV term, stops
 
 ### 4.5 Captaincy score
 
-Captaincy = separate decision from XI selection. Optimizer captain term contributes $\kappa_{i,t} \cdot c_{i,t}$ independently of $\mu_{i,t} \cdot s_{i,t}$. Pure $\hat{q}_{90}$ as captain reward over-weighted ceiling, crowned low-mean/high-variance players over high-mean MIDs with comparable upside. Anchor on Pearson–Tukey mean from §4.4, add fraction of upside premium:
+Captaincy = separate decision from XI selection. Optimizer captain term contributes $\kappa_{i,t} \cdot c_{i,t}$ independently of $\mu_{i,t} \cdot s_{i,t}$. Pure $\hat{q}_{90}$ as captain reward over-weighted ceiling, crowned low-mean/high-variance players over high-mean MIDs with comparable upside. Anchor on Swanson mean from §4.4, add fraction of upside premium:
 
 $$\kappa_{i,t} \;=\; \mu_{i,t} \;+\; \gamma \cdot \bigl(\hat{q}^{(i,t)}_{90} \;-\; \mu_{i,t}\bigr), \qquad \gamma = 0.3$$
 
@@ -258,7 +260,7 @@ Knob `BONUS_BLEND` in [src/fpl_engine.py](../src/fpl_engine.py). $\beta = 1.0$ d
 
 ### 4.9 Joint Monte-Carlo aggregation
 
-Lives in [src/fpl_engine.py](../src/fpl_engine.py) (`_joint_mc_aggregate`). Prior aggregation summed quantiles across DGW fixtures independently per player + treated different players' uncertainties as uncorrelated — Liverpool clean sheet modelled as raising Virgil's distribution + Salah's distribution as if unrelated, even though both flow from same underlying match outcome. Joint MC step keeps per-row Pearson–Tukey moments, draws correlated samples:
+Lives in [src/fpl_engine.py](../src/fpl_engine.py) (`_joint_mc_aggregate`). Prior aggregation summed quantiles across DGW fixtures independently per player + treated different players' uncertainties as uncorrelated — Liverpool clean sheet modelled as raising Virgil's distribution + Salah's distribution as if unrelated, even though both flow from same underlying match outcome. Joint MC step keeps per-row Swanson moments, draws correlated samples:
 
 $$\widetilde{\text{pts}}_{i,f}^{(d)} \;=\; \mu_{i,f} \;+\; \rho \cdot \hat{s}_{i,f} \cdot \eta_{\text{team}(i),\, t(f)}^{(d)} \;+\; \sqrt{1 - \rho^2} \cdot \hat{s}_{i,f} \cdot \varepsilon_{i,f}^{(d)}$$
 
@@ -303,7 +305,7 @@ $$\max \sum_{t=t_0}^{t_0 + H - 1} \sum_{i=1}^{N} \Bigl[\, \mu_{i,t}\, s_{i,t} \;
 
 Design notes:
 
-- $\mu_{i,t}$ = Pearson–Tukey mean $(q_{10} + 4 q_{50} + q_{90})/6$ from §4.4 — better matches realised XI totals than median for FPL's right-skewed point distribution.
+- $\mu_{i,t}$ = Swanson mean $0.3\,q_{10} + 0.4\,q_{50} + 0.3\,q_{90}$ from §4.4 — skew-aware estimator, lifts mean ~12 % vs Simpson weights on right-skewed FPL points.
 - Bench weight $b = 0.15$ = empirical auto-sub realization, roughly $P(\text{bench player auto-subbed in})$ × avg fraction of starter points retained.
 - **Risk penalty** = **linear in standard deviation** $\hat{s}_{i,t}$, not variance. CBC LP-only — quadratic $\hat{s}^2$ term would need MIQP — linear form keeps risk magnitude on same scale as EV term, so solver doesn't over-punish high-ceiling players ($\hat{s}^2$ penalty would scale super-linearly with spread). Reference precedent for Markowitz-style mean–variance trade-off in fantasy sports lineup ILPs: [Picking Winners in Daily Fantasy Sports Using Integer Programming][ref-hvz].
 - **EO tilt** $\eta \cdot \mu \cdot (1 - \text{EO})$ defaults zero → pure points EV. $\eta > 0$ late in season pushes solver toward differentials (high EV, low ownership) → max rank-EV.
@@ -347,7 +349,7 @@ Combined with $-4 h_t$ term in objective: solver commits hit only when expected 
 
 ### 5.5 Receding Horizon Control
 
-Full multi-period MILP solved with $H = 8$ look-ahead each week. Per-GW objective contributions weighted by attenuation profile $w_k = [1,\, 1,\, 1,\, 1,\, 1,\, 0.6,\, 0.4,\, 0.2]$, indexed by horizon offset $k = t - t_0$ — long-tail fixture-swing info feeds into transfer plan (Liverpool's brutal Apr–May, Arsenal's run-in) without trusting noisy point estimates 6+ GWs out as fully as next-GW prediction. Hit cost $-4 h_t$ **not** attenuated; -4 pt hit real regardless of horizon distance.
+Full multi-period MILP solved with $H = 8$ look-ahead each week. Per-GW objective contributions weighted by **geometric discount** $w_k = \gamma^k$ with $\gamma = 0.85$, indexed by horizon offset $k = t - t_0$ — canonical MPC form, monotone, smooth across horizon (no piecewise discontinuity). Profile: $[1.00, 0.85, 0.72, 0.61, 0.52, 0.44, 0.38, 0.32]$. Long-tail fixture-swing info feeds into transfer plan (Liverpool's brutal Apr–May, Arsenal's run-in) without trusting noisy point estimates 6+ GWs out as fully as next-GW prediction. Hit cost $-4 h_t$ **not** attenuated; -4 pt hit real regardless of horizon distance.
 
 Only $t_0$ (next GW) decisions executed: `transfers_in`, `transfers_out`, `xi_ids`, `captain`, `vice`, `hits`. Next week re-solves from updated state (squad, bank, free transfers). Standard MPC formulation — see [Model Predictive Control: Recent Developments and Future Promise][ref-mpc] for stochastic + economic MPC survey.
 
@@ -355,7 +357,7 @@ Only $t_0$ (next GW) decisions executed: `transfers_in`, `transfers_out`, `xi_id
 
 ## 6. Chip Scheduling
 
-Lives in [src/chips.py](../src/chips.py). Chip activation = convex function of fixture quality weekly MILP doesn't see directly. Handled as greedy post-processing heuristic over same projection frame.
+Lives in [src/chips.py](../src/chips.py). Chip activation = convex function of fixture quality the per-GW MILP doesn't see directly. Handled as greedy post-processing heuristic over same projection frame.
 
 | Chip | Heuristic |
 |---|---|
@@ -428,7 +430,7 @@ fpl-ml-manager/
 │   ├── README.md                # This file
 │   └── FPL_101.md               # Domain primer
 └── .github/workflows/
-    └── weekly_update.yml        # GitHub Actions: Wednesdays 10:00 UTC
+    └── pipeline.yml        # GitHub Actions: 05:30 + 17:30 UTC daily
 ```
 
 ---
@@ -458,31 +460,38 @@ pip install -r requirements.txt
 python src/main.py
 ```
 
-First run trains every model artifact from scratch. Subsequent runs reuse `data/*.json` + retrain only when file missing. Output → [data/processed/lineup.md](../data/processed/lineup.md). Carried squad state at [data/processed/squad_snapshot.csv](../data/processed/squad_snapshot.csv), consumed by next week's RHC pass.
+First run trains every model artifact from scratch. Subsequent runs reuse `data/*.json` + retrain only when file missing. Output → [data/processed/lineup.md](../data/processed/lineup.md). Carried squad state at [data/processed/squad_snapshot.csv](../data/processed/squad_snapshot.csv), consumed by next RHC pass.
 
 ### Tuning and recalibration
 
+Recalibration is automatic. `python src/main.py` calls `_maybe_recalibrate(...)` which walk-forward-retrains the points + minutes heads when `data/points_recalib.json` / `data/minutes_recalib.json` are older than `RECALIB_STALE_DAYS` (= 14) or missing. JSONs auto-load via `predict_quantiles` / `predict_minutes` on next inference.
+
+Manual triggers (debugging, custom holdouts, DC ρ tuning):
+
 ```bash
-# 1. Walk-forward CV → produces backtest predictions + calibration tables
+# Force-refresh: delete the JSON and re-run main.py
+rm data/points_recalib.json data/minutes_recalib.json
+python src/main.py
+
+# Standalone walk-forward CV → backtest predictions + calibration tables
 python src/backtest.py --k 8
 
-# 2. Fit per-pos isotonic recalib for the minutes head (§4.7)
+# Standalone refit (consumes data/processed/backtest/*.csv from previous step)
+python src/recalibrate_points.py
 python src/recalibrate_minutes.py
-# → data/minutes_recalib.json (auto-loaded by predict_minutes)
 
-# 3. Grid-search Dixon-Coles ρ (§3.2)
+# Grid-search Dixon-Coles ρ (§3.2). NOT automated — manually update DC_RHO in train_match_model.py
 python src/tune_dc_rho.py --k 8
-# → data/processed/backtest/dc_rho_grid.csv; manually update DC_RHO in train_match_model.py
 
-# 4. Re-run backtest with recalibrated minutes head to verify gap closure
+# Re-run backtest with recalibrated minutes head to verify gap closure
 python src/backtest.py --k 8 --minutes-recalib data/minutes_recalib.json
 ```
 
-Points-head affine recalibration ([src/recalibrate_points.py](../src/recalibrate_points.py)) follows same pattern; output → `data/points_recalib.json`, auto-loaded by `predict_quantiles`.
-
 ### Scheduled runs
 
-GitHub Actions workflow [.github/workflows/weekly_update.yml](../.github/workflows/weekly_update.yml) runs every Wed 10:00 UTC, commits refreshed report back to repo.
+GitHub Actions workflow [.github/workflows/pipeline.yml](../.github/workflows/pipeline.yml) runs **twice daily** at 05:30 + 17:30 UTC — 30 min after FPL-Core-Insights upstream refresh (~05:00 + 17:00 UTC). Pipeline is idempotent: only commits when artifacts changed. `concurrency: fpl-update` group prevents overlap if a run spans the next slot.
+
+Recalibration auto-fires inside `python src/main.py` when `data/points_recalib.json` or `data/minutes_recalib.json` exceeds `RECALIB_STALE_DAYS` (= 14) — walk-forward retrain on last `RECALIB_HOLDOUT_K` (= 8) finished GWs. Manual override: delete the JSON to force re-fit on next run.
 
 ---
 
@@ -492,9 +501,10 @@ GitHub Actions workflow [.github/workflows/weekly_update.yml](../.github/workflo
 - **Two-stage minutes head** (§4.3, [src/train_minutes_model.py](../src/train_minutes_model.py)). Replaces single `reg:logistic` regressor with `binary:logistic` `plays` classifier × `reg:logistic` `mins-given-played` regressor on disjoint subsets of bimodal minutes target. Engine consumes `mins_pred = plays × mins_when_played` for q10/q50 (mean-mass needs minutes on pitch), `plays` alone for q90 (hauls usually land before any sub, ceiling near-fully realised given player gets on). Legacy single-head artifact stays loadable as fallback.
 - **Isotonic per-(position, quantile) points recalibration** (§4.6, [src/recalibrate_points.py](../src/recalibrate_points.py)). Equal-frequency bins on `q_pred` × per-bin empirical α-quantile of `y` × `sklearn.isotonic.IsotonicRegression` — canonical non-parametric quantile recalibrator. Falls back to prior affine map for any (pos, α) cell with fewer than `MIN_ROWS_ISOTONIC` (= 400) rows. Non-crossing re-enforced row-wise.
 - **Bonus-head additive blend** (§4, [src/train_bonus_model.py](../src/train_bonus_model.py)). Three quantile boosters (`reg:quantileerror`, α ∈ {0.10, 0.50, 0.90}) trained directly on FPL `bonus` column. Engine adds `BONUS_BLEND = 0.5 ×` predicted bonus quantiles onto points-head quantiles before availability multiplier — lifts ceiling specifically for bonus-heavy archetypes (CS-keeping defenders, save-rich GKs) without disturbing q10 floor. Half-blend pending clean retrain of points head on `total_points - bonus`.
-- **Joint-score Monte-Carlo aggregation** (§4, [src/fpl_engine.py](../src/fpl_engine.py)). Per-fixture `(player, team)` rows summed under correlated draws: `MC_TEAM_RHO = 0.4` of per-row dispersion shared with single team-shock per (team, GW) per draw, rest idiosyncratic. Captures Salah+Virgil-rise-together / Salah+Diaz-rise-together correlation prior independent aggregation ignored. Outputs same `xp_t / var_t / cap_xp_t` schema. `mc_samples = 0` falls back to deterministic Pearson–Tukey aggregation.
-- **Receding horizon h = 8 with attenuation** (§5.5, [src/optimizer.py](../src/optimizer.py)). Solver still runs single LP, but per-GW objective contributions weighted `[1, 1, 1, 1, 1, 0.6, 0.4, 0.2]`. Long-tail fixture-swing info feeds into transfer planning (Liverpool's brutal Apr–May, Arsenal's run-in) without trusting noisy point estimates 6+ GWs out as fully as next-GW prediction. Hits cost **not** attenuated — -4 pt hit real regardless of horizon distance.
-- **Pearson–Tukey mean estimator for $\mu_{i,t}$** (§4.4). Sum-of-medians under-shot realised XI totals (~35 vs 50–65 pts). Replaced $\mu = \hat{q}_{50}$ with $\mu = (\hat{q}_{10} + 4\hat{q}_{50} + \hat{q}_{90})/6$. Risk term switched from $-\nu \hat{\sigma}^2$ to $-\nu \hat{s}$ (linear in std) so CBC keeps single LP, high-ceiling players not over-punished.
+- **Joint-score Monte-Carlo aggregation** (§4, [src/fpl_engine.py](../src/fpl_engine.py)). Per-fixture `(player, team)` rows summed under correlated draws: `MC_TEAM_RHO = 0.4` of per-row dispersion shared with single team-shock per (team, GW) per draw, rest idiosyncratic. Captures Salah+Virgil-rise-together / Salah+Diaz-rise-together correlation prior independent aggregation ignored. Outputs same `xp_t / var_t / cap_xp_t` schema. `mc_samples = 0` falls back to deterministic Swanson aggregation.
+- **Twice-daily schedule + auto-recalibration** ([src/main.py](../src/main.py), [.github/workflows/pipeline.yml](../.github/workflows/pipeline.yml)). Workflow cron `30 5,17 * * *` UTC — fires 30 min after each FPL-Core-Insights upstream refresh window. `_maybe_recalibrate` re-fits `points_recalib.json` + `minutes_recalib.json` when stale (> `RECALIB_STALE_DAYS` = 14 d) by running walk-forward CV in-process and calling `fit_points_recalib` + `fit_minutes_recalib` directly — no manual `python src/backtest.py` step required. `concurrency: fpl-update` prevents overlap.
+- **Geometric RHC discount** (§5.5, [src/optimizer.py](../src/optimizer.py)). Replaced piecewise `[1,1,1,1,1,0.6,0.4,0.2]` with $\gamma^k$, $\gamma = 0.85$ over $H = 8$. Smooth, monotone, MPC-canonical. No discontinuity at $k = 5$. Constants `RHC_DISCOUNT` + `RHC_HORIZON` exposed for tuning.
+- **Swanson (Keefer–Bodily) mean estimator for $\mu_{i,t}$** (§4.4). Replaced Simpson weights $(1, 4, 1)/6$ — earlier mislabeled "Pearson–Tukey" — with skew-aware $0.3\,\hat{q}_{10} + 0.4\,\hat{q}_{50} + 0.3\,\hat{q}_{90}$. Heavy median weight under-fired tail mean on right-skewed FPL distribution; Swanson 0.3/0.4/0.3 calibrated to lognormal-family, lifts $\mu$ ~12 % on premium archetypes without disturbing rank order. Real Pearson–Tukey (1965) needs q05/q95 boosters that pinball-loss noise prohibits at 3k rows/position. Risk term remains linear in $\hat{s}$ for CBC LP compatibility.
 - **Minutes-head isotonic recalibration** (§4.7, [src/recalibrate_minutes.py](../src/recalibrate_minutes.py)). Closes §7.4 reliability gap. Re-fit drops minutes Brier 0.122 → 0.095, aligns predicted played-rate (0.39 vs actual 0.39) on GW 27–35 holdout.
 - **Dixon-Coles ρ tuning fixed** (§3.2, [src/tune_dc_rho.py](../src/tune_dc_rho.py)). Two bugs found: (a) `_dc_tau` captured `DC_RHO` as default arg evaluated at def time, so module-level monkeypatch did nothing; (b) prior tuning metric `cs_brier` mathematically invariant to ρ because τ conserves row/column marginals. Now: late-binding ρ lookup + grid-search by joint-score NLL on actual outcomes. ρ now empirically identifiable; default ρ=-0.10 retained pending larger holdout (GW 27–35 favours ρ≈0 by 0.007 nats — within sampling noise on 136 fixtures).
 
@@ -509,6 +519,7 @@ Open items, ordered by impact:
 3. **Correlated-risk portfolio objective (MIQP).** Replace diagonal linear $-\nu \hat{s}_{i,t}$ penalty in §5.2 with full quadratic $x^\top \Sigma x$ — Σ now estimable from MC draws in §4 — once MIQP solver (Gurobi/CPLEX/SCIP) wired in. CBC LP-only.
 4. **Set-piece and manager regime changes.** Embedding-based detection of regime breaks (new manager, new set-piece taker) invalidating historical rolling features. EMA features partially help by weighting recent observations more, but step-change still bleeds through half-life window.
 5. **Learned chip scheduler.** Re-formulate chip activation as jointly-solved MILP extension rather than post-hoc heuristics in §6. Chip-EV path-dependent on transfer plan + DGW timing.
+6. **Empirical MC team-ρ.** `MC_TEAM_RHO = 0.4` in §4.9 hand-set. Fit per-position-pair correlation from history: residualise actual points by predicted $\mu_{i,t}$, compute correlation of residuals across same-team-same-GW player pairs. Likely position-pair dependent (CB-CB high under CS, GK-FWD low). Constant ρ proxy until then.
 
 ---
 

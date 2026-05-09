@@ -39,6 +39,12 @@ POSITIONS = [1, 2, 3, 4]
 MIN_ROWS_ISOTONIC = 400  # below = isotonic over-fits empty bins
 N_BINS_DEFAULT = 30
 B_MIN, B_MAX = 0.1, 5.0  # affine fallback slope bounds
+# Coverage-gap gate. Recalib kept only if |gap_cal| + EPS < |gap_raw|, AND
+# pinball doesn't regress. Pinball-only gate accepted MID q50 recalib that
+# halved pinball but doubled coverage gap (+0.04 → +0.08). Coverage is the
+# audited metric — gate on it.
+COVERAGE_GAP_EPS = 0.005
+PINBALL_REGRESS_TOL = 0.02  # accept ≤2% pinball regression if coverage improves
 
 
 def pinball_loss(y: np.ndarray, q: np.ndarray, alpha: float) -> float:
@@ -97,6 +103,9 @@ def fit_points_recalib(pred: pd.DataFrame, played_only: bool = True
                        ) -> dict[str, dict[str, dict]]:
     """Per (pos, alpha): isotonic if rows >= MIN_ROWS_ISOTONIC, else affine fallback.
 
+    Identity-gate: candidate spec dropped if pinball not beat raw by
+    PINBALL_IMPROVE_MIN. Raw passthrough at apply time.
+
     Schema: {pos_id: {qNN: {type: iso|affine, knots|ab: ...}}}
     """
     if played_only and "minutes" in pred.columns:
@@ -114,10 +123,21 @@ def fit_points_recalib(pred: pd.DataFrame, played_only: bool = True
             knots = fit_isotonic_quantile(qp, y, alpha)
             key = f"q{int(alpha * 100):02d}"
             if knots:
-                coef[str(pos)][key] = {"type": "iso", "knots": knots}
+                spec = {"type": "iso", "knots": knots}
             else:
                 a, b = fit_affine(y, qp, alpha)
-                coef[str(pos)][key] = {"type": "affine", "ab": [a, b]}
+                spec = {"type": "affine", "ab": [a, b]}
+            calibrated = _apply_one(spec, qp)
+            raw_gap = abs(float((y <= qp).mean()) - alpha)
+            cal_gap = abs(float((y <= calibrated).mean()) - alpha)
+            raw_pl = pinball_loss(y, qp, alpha)
+            cal_pl = pinball_loss(y, calibrated, alpha)
+            coverage_better = cal_gap + COVERAGE_GAP_EPS < raw_gap
+            pinball_acceptable = (raw_pl <= 0 or
+                                   (cal_pl - raw_pl) / raw_pl <= PINBALL_REGRESS_TOL)
+            if not (coverage_better and pinball_acceptable):
+                continue  # gated. Raw passthrough.
+            coef[str(pos)][key] = spec
     return coef
 
 

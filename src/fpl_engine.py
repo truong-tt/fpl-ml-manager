@@ -12,10 +12,10 @@ from train_bonus_model import load_bonus_models, predict_bonus_quantiles
 from train_minutes_model import load_minutes_model, predict_minutes
 from train_points_model import load_points_models, predict_quantiles
 
-# Bonus blend factor. Full additivity (=1.0) double-counts: points head sees
-# rolling BPS feature + learns part of bonus. 0.5 = pragmatic damp pending
-# clean retrain of points head on `total_points - bonus`.
-BONUS_BLEND = 0.5
+# Bonus blend factor. 1.0 = full additivity. Points head now trained on
+# `total_points - bonus` (target excludes bonus), bonus head adds back. Clean
+# decomposition. Pre-fix used 0.5 damp + total_points target → double-count.
+BONUS_BLEND = 1.0
 
 # Joint MC aggregation. Per-(team, GW) shock + per-row idiosyncratic. Shock-
 # correlated fraction = MC_TEAM_RHO; rest idiosyncratic. Rho=0 → independence
@@ -25,10 +25,16 @@ MC_SAMPLES = 800
 MC_TEAM_RHO = 0.4
 
 
+# Swanson / Keefer-Bodily 3-point estimator weights. Calibrated to skewed
+# (lognormal-family) distributions; outperforms Simpson (1,4,1)/6 on right-
+# skewed FPL points where median systematically under-shoots mean. Sums to 1.
+SWANSON_W10, SWANSON_W50, SWANSON_W90 = 0.3, 0.4, 0.3
+
+
 def _row_quantile_to_moments(q10: np.ndarray, q50: np.ndarray, q90: np.ndarray
                              ) -> tuple[np.ndarray, np.ndarray]:
-    """Pearson-Tukey mean + Gaussian-bracket std from 3 quantiles."""
-    mu = (q10 + 4.0 * q50 + q90) / 6.0
+    """Swanson (Keefer-Bodily) mean + Gaussian-bracket std from 3 quantiles."""
+    mu = SWANSON_W10 * q10 + SWANSON_W50 * q50 + SWANSON_W90 * q90
     sd = np.maximum((q90 - q10) / 2.56, 0.0)
     return mu, sd
 
@@ -148,12 +154,19 @@ class FPLEngine:
             return pd.DataFrame()
 
         cols = points_feature_cols()
-        sides = (("h", 1, "team_h", "a_xg_5", "a_xga_5", "elo_a_pre", "elo_h_pre"),
-                 ("a", 0, "team_a", "h_xg_5", "h_xga_5", "elo_h_pre", "elo_a_pre"))
+        # (side_tag, is_home, team_col, opp_xg_col, opp_xga_col,
+        #  opp_elo_col, own_elo_col, lam_for_col, lam_against_col, cs_p_col)
+        sides = (
+            ("h", 1, "team_h", "a_xg_5", "a_xga_5", "elo_a_pre", "elo_h_pre",
+             "lambda_h", "lambda_a", "cs_h_p"),
+            ("a", 0, "team_a", "h_xg_5", "h_xga_5", "elo_h_pre", "elo_a_pre",
+             "lambda_a", "lambda_h", "cs_a_p"),
+        )
         rows: list[dict[str, Any]] = []
 
         for _, fx in fx_up.iterrows():
-            for _, home, team_col, opp_xg, opp_xga, opp_elo, own_elo in sides:
+            for (_, home, team_col, opp_xg, opp_xga, opp_elo, own_elo,
+                 lam_for, lam_against, cs_p) in sides:
                 tid = int(fx[team_col])
                 for _, p in self.players[self.players["team"] == tid].iterrows():
                     pid = int(p["id"])
@@ -166,6 +179,9 @@ class FPLEngine:
                         "opp_xg_5": float(fx[opp_xg]), "opp_xga_5": float(fx[opp_xga]),
                         "opp_elo": float(fx[opp_elo]), "own_elo": float(fx[own_elo]),
                         "elo_gap": float(fx[own_elo]) - float(fx[opp_elo]),
+                        "own_lambda_for": float(fx[lam_for]),
+                        "own_lambda_against": float(fx[lam_against]),
+                        "own_cs_p": float(fx[cs_p]),
                         "pos_1": int(pos == 1), "pos_2": int(pos == 2),
                         "pos_3": int(pos == 3), "pos_4": int(pos == 4),
                         "is_pen_taker": int(p.get("penalties_order", 0) == 1),
@@ -246,7 +262,9 @@ class FPLEngine:
         else:
             agg = rows.groupby(["player_id", "fixture_gw"], as_index=False).agg(
                 q10=("q10", "sum"), q50=("q50", "sum"), q90=("q90", "sum"))
-            agg["mean_xp"] = (agg["q10"] + 4.0 * agg["q50"] + agg["q90"]) / 6.0
+            agg["mean_xp"] = (SWANSON_W10 * agg["q10"]
+                              + SWANSON_W50 * agg["q50"]
+                              + SWANSON_W90 * agg["q90"])
             agg["variance"] = (agg["q90"] - agg["q10"]) / 2.56
             CAP_UPSIDE_WEIGHT = 0.3
             agg["cap_xp"] = agg["mean_xp"] + CAP_UPSIDE_WEIGHT * (agg["q90"] - agg["mean_xp"])
