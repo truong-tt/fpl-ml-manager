@@ -10,7 +10,7 @@ import xgboost as xgb
 from chips import (recommend_bench_boost, recommend_free_hit,
                    recommend_triple_captain, recommend_wildcard)
 from data_loader import SEASON, main as refresh_data
-from features import minutes_feature_cols, points_feature_cols
+from features import match_feature_cols, minutes_feature_cols, points_feature_cols
 from fpl_engine import FPLEngine
 from optimizer import solve_initial_squad, solve_rhc_transfers
 from train_bonus_model import train_bonus_model
@@ -120,7 +120,12 @@ def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) ->
     detect feature-schema drift on cached on-disk boosters (e.g. features.py
     grew new cols since last train) and force retrain.
     """
-    if not all((DATA_DIR / f).exists() for f in ("xgb_home_goals.json", "xgb_away_goals.json")):
+    match_files = ("xgb_home_goals.json", "xgb_away_goals.json")
+    match_probe = DATA_DIR / "xgb_home_goals.json"
+    match_have = all((DATA_DIR / f).exists() for f in match_files)
+    if (not match_have
+            or _schema_drift(match_probe, match_feature_cols())):
+        print("[models] (re)training match head — schema drift or missing artifacts")
         train_match_models(fx, hist, teams)
     compute_fixture_lambdas(fx, hist, teams)
     points_files = [f"xgb_points_q{q:02d}_p{p}.json"
