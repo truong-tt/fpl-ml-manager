@@ -104,6 +104,8 @@ $$\overline{\text{xG}}_{T,t}^{(w)} = \frac{\sum_{k=1}^{t-1} \alpha_k \cdot \text
 | Aggregated FPL `history` (per-team, per-GW sums) | xG, xGA, GF, GA |
 | Opta team-level on `fixtures.csv` (one row per side per match) | true Opta xG (`oxg`), big chances (`obc`), total shots (`osh`), and each conceded counterpart |
 
+**Stakes** features (both models, [src/league_table.py](../src/league_table.py)): per-(season, event) league standings reconstructed from finished fixtures. Per side, signed pts gap to each tier cutoff normalised by max remaining pts: $\text{pts\_to\_tier}_\text{norm} = (\text{pts}_{k} - \text{pts}_\text{self}) / (3 \cdot \text{gws\_remaining})$, where $k \in \{1, 4, 6, 17\}$ for title / UCL / European cups (UEL+UECL band) / safety. Match model gets `h_*` + `a_*` cols; points model side-conditions to `own_*` / `opp_*`. Late-season step-changes (Arsenal title chase, mid-table beach mode, drop-fight desperation) propagate immediately rather than bleeding through the EMA halflife window. Encodes a structurally novel signal — booster cannot infer "Arsenal needs 3 more wins to clinch" from rolling xG alone.
+
 **Points** model: per-player row uses lagged minutes $m_{i,t-1}, m_{i,t-2}, m_{i,t-3}$ + 5-/10-GW rolling per-player means of (xG, xA, xGI, BPS, ICT, saves, CBI, tackles, recoveries) + six per-player Opta stats from `playermatchstats.csv` (aggregated to per-(player, GW) sums first): Opta xG `oxg`, Opta xA `oxa`, chances created `occ`, touches in opp box `otob`, total shots `osh`, dribbles `odrib`. Fixture context from match-feature join: `is_home`, `opp_xg_5`, `opp_xga_5`, `opp_elo`, `own_elo`, `elo_gap`. Set-piece + pen-taker flags from FPL playerstats. Rolling `total_points` excluded on purpose — feedback loop: premium with one bad recent GW projects lower forever. Underlying xG/xA/ICT carry form signal without that pathology.
 
 ---
@@ -423,6 +425,7 @@ fpl-ml-manager/
 │   ├── calibration.py           # Coverage / pinball / Brier / reliability tables
 │   ├── recalibrate_points.py    # Per-(pos, quantile) affine recalibration for points head
 │   ├── recalibrate_minutes.py   # Per-pos isotonic recalibration for minutes / 90 head
+│   ├── league_table.py          # Pre-match standings + tier-distance stakes features
 │   └── tune_dc_rho.py           # Grid-search Dixon-Coles ρ on walk-forward CS Brier
 ├── data/
 │   ├── players.csv, teams.csv, fixtures.csv, history.csv
@@ -507,6 +510,7 @@ Recalibration auto-fires inside `python src/main.py` when `data/points_recalib.j
 
 ## 10. Recently Shipped
 
+- **Stakes features: tier-distance + late-season motivation** ([src/league_table.py](../src/league_table.py)). Pre-match standings reconstructed per (season, event) from finished fixtures with `cumsum().shift(1)` on a (season × team × 1..38 GW) grid so opponents' state is available even on blank GWs. New cols (per side, signed-gap normalised by `3 × gws_remaining`): `pts_to_title_norm` (1st), `pts_to_top4_norm` (UCL), `pts_to_top6_norm` (UEL/UECL band), `pts_to_safety_norm` (17th), `in_drop_zone`, `rank`, `ppg`, `gws_remaining`. Match model gets `h_*` + `a_*`; points model side-conditions to `own_*` / `opp_*`. Encodes "Arsenal title-chasing fully engaged" / "WHU mid-table on beach mode" — structural signal EMA rolling form lags on by halflife=2.5 GW. Schema drift guard auto-retrains heads on next pipeline run.
 - **Feature-schema drift retrain guard** ([src/main.py](../src/main.py)). `_ensure_models` now probes each cached booster's stored `feature_names` via `_booster_features` and forces a retrain when it diverges from the current `features.py` output (`_schema_drift`). Retrain also wipes the matching recalib JSON so `_maybe_recalibrate` re-fits against fresh raw quantiles. Fixes XGBoost `feature_names mismatch` on GitHub Actions runs that always pull HEAD's stale committed artifacts.
 - **GW-in-play pipeline guard** ([src/main.py](../src/main.py)). `_gw_in_play` short-circuits `main()` when any current-season fixture is live (kickoff in [now − 3 h, now], `finished=False`) or imminent (kickoff in [now, now + 2 h]). Prevents producing a lineup the user can't act on between deadline and final whistle. GitHub Actions cron (`30 5,17 * * *`) still fires unconditionally; guard exits early after checkout + setup.
 - **EMA rolling features** (§2.2, [src/features.py](../src/features.py)). Replaced `rolling(w).mean()` with `ewm(halflife=w/2).mean()` across all team/Opta/player rolling stats. Half-life scales with nominal window (`roll5` → halflife 2.5, `roll10` → halflife 5). Catches manager/set-piece/form regime changes faster — one-pre-GW shock now propagates exponentially rather than waiting `w` GWs to slide out of equal-weight window. Forces one-time retrain of every model artifact.

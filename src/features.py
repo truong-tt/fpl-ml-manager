@@ -10,6 +10,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from league_table import attach_stakes, stakes_match_cols, stakes_player_cols
+
 # Match-model-predicted fixture λ + DC CS prob. Optional. Built by
 # train_match_model.compute_fixture_lambdas → main pipeline writes after match
 # trains. Absent on cold start → neutral defaults (avg PL goals, baseline CS).
@@ -197,6 +199,11 @@ def build_match_features(
             fx[col] = default
         else:
             fx[col] = pd.to_numeric(fx[col], errors="coerce").fillna(default)
+
+    # Stakes features: pre-match league position + tier-distance gaps. Encodes
+    # late-season motivation (title race, top-4, top-6, drop fight) that EMA
+    # rolling form lags by halflife window. See src/league_table.py.
+    fx = attach_stakes(fx)
     return fx
 
 
@@ -206,8 +213,9 @@ def match_feature_cols() -> list[str]:
             for s in ("h", "a") for w in TEAM_WINDOWS for stat in ("xg", "xga", "gf", "ga")]
     opta_short = [c for _, c in OPTA_STATS] + [f"{c}a" for _, c in OPTA_STATS]
     cols += [f"{s}_{c}_{OPTA_WINDOW}" for s in ("h", "a") for c in opta_short]
-    return cols + ["elo_h_pre", "elo_a_pre", "elo_diff",
-                   "xg_diff_5", "xga_diff_5", "oxg_diff", "oxga_diff"]
+    cols += ["elo_h_pre", "elo_a_pre", "elo_diff",
+             "xg_diff_5", "xga_diff_5", "oxg_diff", "oxga_diff"]
+    return cols + stakes_match_cols()
 
 
 def build_player_features(
@@ -268,11 +276,18 @@ def build_player_features(
     df["is_pen_taker"] = (df["penalties_order"].fillna(0) == 1).astype(int)
     df["is_fk_taker"] = (df["direct_freekicks_order"].fillna(0) == 1).astype(int)
 
-    fx = fixture_feats[["id", "event", "team_h", "team_a",
-                        "h_xg_5", "a_xg_5", "h_xga_5", "a_xga_5",
-                        "elo_h_pre", "elo_a_pre",
-                        "lambda_h", "lambda_a", "cs_h_p", "cs_a_p"]].rename(
-        columns={"id": "fixture"})
+    stakes_side_cols = []
+    for s in ("h", "a"):
+        stakes_side_cols += [f"{s}_rank", f"{s}_ppg", f"{s}_in_drop_zone"]
+        stakes_side_cols += [f"{s}_pts_to_title_norm", f"{s}_pts_to_top4_norm",
+                              f"{s}_pts_to_top6_norm", f"{s}_pts_to_safety_norm"]
+    fx_take = ["id", "event", "team_h", "team_a",
+               "h_xg_5", "a_xg_5", "h_xga_5", "a_xga_5",
+               "elo_h_pre", "elo_a_pre",
+               "lambda_h", "lambda_a", "cs_h_p", "cs_a_p",
+               "gws_remaining"] + stakes_side_cols
+    fx_take = [c for c in fx_take if c in fixture_feats.columns]
+    fx = fixture_feats[fx_take].rename(columns={"id": "fixture"})
     df = df.merge(fx, on="fixture", how="left")
     df["is_home"] = (df["team_id"] == df["team_h"]).astype(int)
     df["opp_xg_5"] = np.where(df["is_home"] == 1, df["a_xg_5"], df["h_xg_5"]).astype(float)
@@ -286,6 +301,26 @@ def build_player_features(
     df["own_lambda_for"] = np.where(df["is_home"] == 1, df["lambda_h"], df["lambda_a"]).astype(float)
     df["own_lambda_against"] = np.where(df["is_home"] == 1, df["lambda_a"], df["lambda_h"]).astype(float)
     df["own_cs_p"] = np.where(df["is_home"] == 1, df["cs_h_p"], df["cs_a_p"]).astype(float)
+
+    # Stakes: side-condition h_/a_ pre-match-table cols → own_/opp_. Late-season
+    # motivation signal: opp_pts_to_title near 0 = title chaser fully engaged;
+    # own_pts_to_safety strongly positive = mid-table no-stakes.
+    stakes_pairs = [("rank", 10.0), ("ppg", 0.0), ("in_drop_zone", 0.0),
+                    ("pts_to_title_norm", 0.0), ("pts_to_top4_norm", 0.0),
+                    ("pts_to_top6_norm", 0.0), ("pts_to_safety_norm", 0.0)]
+    for name, default in stakes_pairs:
+        h_col, a_col = f"h_{name}", f"a_{name}"
+        if h_col not in df.columns or a_col not in df.columns:
+            df[f"own_{name}"] = default
+            df[f"opp_{name}"] = default
+            continue
+        df[h_col] = df[h_col].fillna(default).astype(float)
+        df[a_col] = df[a_col].fillna(default).astype(float)
+        df[f"own_{name}"] = np.where(df["is_home"] == 1, df[h_col], df[a_col]).astype(float)
+        df[f"opp_{name}"] = np.where(df["is_home"] == 1, df[a_col], df[h_col]).astype(float)
+    if "gws_remaining" not in df.columns:
+        df["gws_remaining"] = 0.0
+    df["gws_remaining"] = df["gws_remaining"].fillna(0.0).astype(float)
     # target = total_points - bonus. Bonus head adds back at engine w/ BONUS_BLEND=1.0.
     # Removes double-count (points head learning partial bonus + bonus head adding it).
     bonus = pd.to_numeric(df.get("bonus", 0.0), errors="coerce").fillna(0.0).astype(float)
@@ -305,7 +340,7 @@ def points_feature_cols() -> list[str]:
                  ("xg", "xa", "xgi", "bps", "ict", "saves", "cbi", "tkl", "rec",
                   "oxg", "oxa", "occ", "otob", "osh", "odrib")]
         base += [f"roll{w}_{k}_share" for k in ("xg", "xa", "xgi")]
-    return base
+    return base + stakes_player_cols()
 
 
 def minutes_feature_cols() -> list[str]:
