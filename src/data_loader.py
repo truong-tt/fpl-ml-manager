@@ -284,6 +284,42 @@ def _build_players(teams: pd.DataFrame, current_gw: int) -> pd.DataFrame:
     return players
 
 
+def _overlay_live_fpl_fixtures(fixtures: pd.DataFrame) -> pd.DataFrame:
+    """Override `gameweek` for unfinished current-season fixtures from live FPL API.
+    Source of truth for postponements / DGW reschedules that lag in FPL-CI snapshot.
+    Silent fallback on network failure."""
+    if fixtures.empty or "finished" not in fixtures.columns:
+        return fixtures
+    try:
+        r = requests.get(f"{FPL_API_BASE}fixtures/", timeout=10)
+        r.raise_for_status()
+        live = pd.DataFrame(r.json())
+    except Exception:
+        return fixtures
+    if live.empty or not {"event", "team_h", "team_a"}.issubset(live.columns):
+        return fixtures
+    live = live.dropna(subset=["event", "team_h", "team_a"]).copy()
+    live["event"] = live["event"].astype(int)
+    live["team_h"] = live["team_h"].astype(int)
+    live["team_a"] = live["team_a"].astype(int)
+    key_to_event = {(int(row.team_h), int(row.team_a)): int(row.event)
+                    for row in live.itertuples(index=False)}
+    out = fixtures.copy()
+    mask = (~out["finished"].astype(bool)) & \
+           out["home_team"].notna() & out["away_team"].notna()
+    if not mask.any():
+        return out
+    new_gw = out.loc[mask].apply(
+        lambda r: key_to_event.get((int(r["home_team"]), int(r["away_team"]))),
+        axis=1,
+    )
+    valid = new_gw.notna()
+    if valid.any():
+        idx = new_gw.index[valid]
+        out.loc[idx, "gameweek"] = new_gw.loc[idx].astype(int).values
+    return out
+
+
 def _overlay_live_fpl_api(players: pd.DataFrame) -> pd.DataFrame:
     """Best-effort price/status refresh from live FPL API. Silent fallback on failure."""
     try:
@@ -552,9 +588,9 @@ def main() -> None:
     code_to_id = dict(zip(teams["code"].astype(int), teams["team_id"].astype(int)))
 
     # Phase 1. Fixtures across all seasons → global ids, season-aware lookup.
-    fx_parts: list[pd.DataFrame] = [
-        _build_fixtures_current(current_gw, max_gw, code_to_id)
-    ]
+    fx_curr = _build_fixtures_current(current_gw, max_gw, code_to_id)
+    fx_curr = _overlay_live_fpl_fixtures(fx_curr)
+    fx_parts: list[pd.DataFrame] = [fx_curr]
     for s in HISTORICAL_SEASONS:
         fx_h = _build_fixtures_historical(s, code_to_id)
         if not fx_h.empty:

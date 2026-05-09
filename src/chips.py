@@ -39,6 +39,8 @@ def recommend_free_hit(fixtures: pd.DataFrame, current_gw: int, horizon: int) ->
     best = {"gw": None, "blanks": 0}
     for t in range(current_gw, current_gw + horizon):
         fx = fx_curr[fx_curr["event"] == t]
+        if fx.empty:
+            continue
         missing = len(teams_all - set(fx["team_h"].tolist() + fx["team_a"].tolist()))
         if missing > best["blanks"]:
             best = {"gw": t, "blanks": missing}
