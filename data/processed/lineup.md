@@ -1,45 +1,43 @@
 # GW36 Lineup
 
-- **Bank:** £1.3m
+- **Bank:** £1.4m
 - **Hits:** 0
-- **Squad Value:** £98.7m
-- **XI Expected Points (incl. captain):** 38.8
+- **Squad Value:** £98.6m
+- **XI Expected Points (incl. captain):** 42.6
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Raya | ARS | GK | 6.1 | 2.9 | 8.42 |  |
-| Lacroix | CRY | DEF | 5.2 | 2.71 | 7.99 |  |
-| Virgil | LIV | DEF | 6.1 | 2.81 | 8.13 |  |
-| Gabriel | ARS | DEF | 7.2 | 3.02 | 9.04 |  |
-| Wirtz | LIV | MID | 8.3 | 3.12 | 9.04 |  |
-| Szoboszlai | LIV | MID | 7.0 | 3.01 | 8.91 |  |
-| B.Fernandes | MUN | MID | 10.4 | 8.31 | 12.41 | (C) |
-| Garner | EVE | MID | 5.2 | 2.98 | 8.73 |  |
-| Casemiro | MUN | MID | 5.8 | 3.33 | 9.58 |  |
-| Thiago | BRE | FWD | 7.3 | 2.67 | 8.51 |  |
-| Bowen | WHU | FWD | 7.7 | 3.92 | 12.03 | (VC) |
+| Raya | ARS | GK | 6.1 | 2.83 | 8.38 |  |
+| Gabriel | ARS | DEF | 7.2 | 2.72 | 8.66 |  |
+| Lacroix | CRY | DEF | 5.2 | 4.94 | 10.1 |  |
+| Richards | CRY | DEF | 4.4 | 5.04 | 9.8 |  |
+| Virgil | LIV | DEF | 6.1 | 2.78 | 8.12 |  |
+| Garner | EVE | MID | 5.2 | 2.8 | 8.57 |  |
+| Wirtz | LIV | MID | 8.3 | 2.99 | 8.7 |  |
+| Szoboszlai | LIV | MID | 7.0 | 3.2 | 9.18 |  |
+| B.Fernandes | MUN | MID | 10.4 | 8.14 | 12.04 | (C) |
+| Casemiro | MUN | MID | 5.8 | 3.15 | 9.37 |  |
+| Bowen | WHU | FWD | 7.7 | 4.0 | 12.17 | (VC) |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Hermansen | WHU | GK | 4.2 | 2.35 | 7.12 |  |
-| Thiaw | NEW | DEF | 4.9 | 2.59 | 7.77 |  |
-| Mavropanos | WHU | DEF | 4.5 | 2.16 | 7.07 |  |
-| Watkins | AVL | FWD | 8.8 | 2.46 | 6.83 |  |
+| Hermansen | WHU | GK | 4.2 | 2.45 | 7.2 |  |
+| Thiaw | NEW | DEF | 4.9 | 2.36 | 7.35 |  |
+| Watkins | AVL | FWD | 8.8 | 2.36 | 6.89 |  |
+| Thiago | BRE | FWD | 7.3 | 2.45 | 8.06 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Botman | Lacroix |
-| Rice | Wirtz |
+| Mavropanos | Richards |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW37 — B.Fernandes (+6.1 pts)
-- **Bench Boost:** GW37 (+9.7 pts)
-- **Free Hit:** GW39 (20 teams blank)
-- **Wildcard:** hold (2 suggested transfers, 0 hits)
+- **Triple Captain:** GW37 — B.Fernandes (+5.8 pts)
+- **Bench Boost:** GW37 (+10.3 pts)
+- **Wildcard:** hold (1 suggested transfers, 0 hits)
