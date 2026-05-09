@@ -56,6 +56,35 @@ def _current_gw(fixtures: pd.DataFrame) -> int:
     return int(upcoming.index.min()) if not upcoming.empty else 38
 
 
+# Live-match window guard. Daily cron fires at 05:30 + 17:30 UTC; skip when a
+# GW is mid-flight so we don't burn CI minutes producing a lineup the user
+# can't act on (transfers locked from deadline through last final whistle).
+LIVE_KICKOFF_LOOKBACK_HOURS = 3.0  # 90' + ET + stoppage cushion
+LIVE_KICKOFF_LOOKAHEAD_HOURS = 2.0  # post-deadline lockout before first match
+
+
+def _gw_in_play(fixtures: pd.DataFrame) -> bool:
+    """True when any current-season fixture is live or imminent.
+
+    Live: kickoff in [now − LOOKBACK, now] and finished=False.
+    Imminent: kickoff in [now, now + LOOKAHEAD] (deadline already passed,
+    first match about to start; transfers locked, lineup advice moot).
+    """
+    fx = fixtures
+    if "season" in fx.columns:
+        fx = fx[fx["season"] == SEASON]
+    if fx.empty:
+        return False
+    ko = pd.to_datetime(fx["kickoff_time"], utc=True, errors="coerce")
+    fin = fx["finished"].astype(str).str.lower().isin(["true", "1"])
+    now = pd.Timestamp.now(tz="UTC")
+    lookback = now - pd.Timedelta(hours=LIVE_KICKOFF_LOOKBACK_HOURS)
+    lookahead = now + pd.Timedelta(hours=LIVE_KICKOFF_LOOKAHEAD_HOURS)
+    live = (~fin) & (ko >= lookback) & (ko <= now)
+    imminent = (ko > now) & (ko <= lookahead)
+    return bool((live | imminent).any())
+
+
 def _booster_features(path: Path) -> list[str] | None:
     """Booster's stored feature_names. None if file missing or unreadable."""
     if not path.exists():
@@ -260,6 +289,11 @@ def main() -> None:
     history = pd.read_csv(DATA_DIR / "history.csv")
     players = pd.read_csv(DATA_DIR / "players.csv")
     teams = pd.read_csv(DATA_DIR / "teams.csv")
+
+    if _gw_in_play(fixtures):
+        print("[main] GW in play — skip pipeline. "
+              "No actionable transfer/lineup work between deadline and final whistle.")
+        return
 
     _ensure_models(fixtures, history, teams)
     _maybe_recalibrate(fixtures, history, players, teams)
