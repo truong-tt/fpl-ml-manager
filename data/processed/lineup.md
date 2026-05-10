@@ -1,41 +1,46 @@
-# GW36 Lineup
+# GW37 Lineup
 
-- **Bank:** £1.4m
+- **Bank:** £1.3m
 - **Hits:** 0
-- **Squad Value:** £98.6m
-- **XI Expected Points (incl. captain):** 90.1
+- **Squad Value:** £98.7m
+- **XI Expected Points (incl. captain):** 60.2
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Henderson | CRY | GK | 5.1 | 6.51 | 10.52 |  |
-| Lacroix | CRY | DEF | 5.2 | 6.1 | 10.67 |  |
-| Richards | CRY | DEF | 4.4 | 4.53 | 7.62 |  |
-| Tarkowski | EVE | DEF | 5.7 | 4.44 | 15.03 |  |
-| O'Reilly | MCI | DEF | 5.3 | 11.56 | 20.98 |  |
-| Virgil | LIV | DEF | 6.1 | 4.44 | 13.42 |  |
-| Cherki | MCI | MID | 6.6 | 10.65 | 18.88 | (VC) |
-| B.Fernandes | MUN | MID | 10.4 | 4.3 | 13.82 |  |
-| Welbeck | BHA | FWD | 6.4 | 5.94 | 12.88 |  |
-| Haaland | MCI | FWD | 14.7 | 26.72 | 21.42 | (C) |
-| Bowen | WHU | FWD | 7.7 | 4.89 | 12.59 |  |
+| Lammens | MUN | GK | 5.1 | 5.89 | 8.85 |  |
+| Cucurella | CHE | DEF | 6.1 | 5.97 | 11.14 |  |
+| O'Reilly | MCI | DEF | 5.3 | 3.82 | 9.58 |  |
+| Tarkowski | EVE | DEF | 5.7 | 5.51 | 10.41 |  |
+| Botman | NEW | DEF | 4.9 | 6.25 | 12.31 |  |
+| Thiaw | NEW | DEF | 4.9 | 6.15 | 12.29 |  |
+| Casemiro | MUN | MID | 5.9 | 4.31 | 7.76 |  |
+| Dewsbury-Hall | EVE | MID | 5.2 | 4.53 | 8.23 | (VC) |
+| B.Fernandes | MUN | MID | 10.4 | 9.71 | 9.19 | (C) |
+| Welbeck | BHA | FWD | 6.4 | 4.31 | 7.16 |  |
+| Haaland | MCI | FWD | 14.7 | 3.79 | 8.56 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Lammens | MUN | GK | 5.1 | 5.74 | 14.48 |  |
-| Dewsbury-Hall | EVE | MID | 5.2 | 3.46 | 11.87 |  |
-| Casemiro | MUN | MID | 5.9 | 4.03 | 11.71 |  |
-| E.Le Fée | SUN | MID | 4.8 | 3.76 | 10.1 |  |
+| Pope | NEW | GK | 5.0 | 5.12 | 10.88 |  |
+| Cherki | MCI | MID | 6.6 | 3.62 | 8.16 |  |
+| E.Le Fée | SUN | MID | 4.8 | 3.28 | 6.75 |  |
+| Bowen | WHU | FWD | 7.7 | 3.65 | 7.99 |  |
 
 ## Transfers
 
-_Hold — no transfer beats a 4-pt hit._
+| Out | In |
+| --- | --- |
+| Lacroix | Cucurella |
+| Virgil | Botman |
+| Richards | Thiaw |
+| Henderson | Pope |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW36 — Haaland (+15.6 pts)
-- **Bench Boost:** GW37 (+17.4 pts)
-- **Wildcard:** hold (0 suggested transfers, 0 hits)
+- **Triple Captain:** GW38 — Haaland (+6.2 pts)
+- **Bench Boost:** GW38 (+18.1 pts)
+- **Wildcard:** PLAY NOW (4 suggested transfers, 0 hits)
