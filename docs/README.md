@@ -355,9 +355,11 @@ $$\text{ft}_{t_0} = \text{ft}^{\text{init}}, \qquad \text{ft}_t = \min\!\bigl(5,
 
 Transfer budget per GW — transfers in = free transfers used + hits; saved transfers ≤ held:
 
-$$\sum_i \text{tin}_{i,t} = (\text{ft}_t - \text{sv}_t) + h_t, \qquad h_t \geq 0, \qquad \text{sv}_t \leq \text{ft}_t$$
+$$\sum_i \text{tin}_{i,t} = (\text{ft}_t - \text{sv}_t) + h_t, \qquad 0 \leq h_t \leq H_{\max}, \qquad \text{sv}_t \leq \text{ft}_t$$
 
-Combined with $-4 h_t$ term in objective: solver commits hit only when expected gain > 4 pts.
+Hit cost $C_h \cdot h_t$ in objective with $C_h = 6$ (raised from FPL's nominal 4 to discourage churn — replay runs at $C_h = 4$ took ~40 hits/season, top managers 4-8). Per-GW hit cap $H_{\max} = 1$ caps multi-hit gambles in a single GW.
+
+**Banking incentive**: positive reward $\omega \cdot \text{sv}_t$ added to the objective per saved transfer (default $\omega = 0.3$, attenuated by RHC discount $\gamma^k$). Encodes option value of rolling — best-pick-next-week. Without this term, $\text{sv}_t = 0$ trivially because constraint slack carried no upside; solver burned every FT every GW. **Bank-leftover penalty** in cold-start `solve_initial_squad`: $+\beta \cdot \sum_i p_i x_i$ in the objective ($\beta = 0.5$) — flat EV cost per £1m unspent. Stops noisy early-season projections leaving £10m+ in bank when premium picks are only marginally above cheap ones in $\mu$.
 
 ### 5.5 Receding Horizon Control
 
@@ -371,12 +373,16 @@ Only $t_0$ (next GW) decisions executed: `transfers_in`, `transfers_out`, `xi_id
 
 Lives in [src/chips.py](../src/chips.py). Chip activation = convex function of fixture quality the per-GW MILP doesn't see directly. Handled as greedy post-processing heuristic over same projection frame.
 
+**FPL 2025/26 rules**: 8 chips total — two of each type. Set 1 (TC1, BB1, FH1, WC1) must be played by GW19 or it expires. Set 2 (TC2, BB2, FH2, WC2) becomes available GW20+. TC now multiplies captain by **3** (changed from ×2). FH cannot be played in consecutive GWs. WC + FH preserve banked transfers across activation.
+
 | Chip | Heuristic |
 |---|---|
-| **Triple Captain** | Pick GW + owned MID/FWD maximizing captaincy score $\kappa_{i,t}$ from §4.5: $t^{\star},\, i^{\star} = \arg\max_{t,\, i \in \text{squad},\, \text{pos}(i) \in \{3, 4\}}\, \kappa_{i,t}$ |
+| **Triple Captain** (×3 mult) | Pick GW + owned MID/FWD maximizing captaincy score $\kappa_{i,t}$ from §4.5: $t^{\star},\, i^{\star} = \arg\max_{t,\, i \in \text{squad},\, \text{pos}(i) \in \{3, 4\}}\, \kappa_{i,t}$ |
 | **Bench Boost** | Pick GW with highest total bench EV: $t^{\star} = \arg\max_{t}\, \sum_{i \in \text{bench}} \mu_{i,t}$ |
-| **Free Hit** | Pick GW with most teams blanking: $t^{\star} = \arg\max_{t}\, \lvert \{ k : k \text{ blanks at } t \} \rvert$ |
+| **Free Hit** | Pick GW with most teams blanking: $t^{\star} = \arg\max_{t}\, \lvert \{ k : k \text{ blanks at } t \} \rvert$. Constraint: not in consecutive GWs. |
 | **Wildcard** | Trigger if RHC proposes ≥ 4 transfers IN or ≥ 2 hits — MILP's willingness to pay hits = proxy signal current squad far from optimal. |
+
+**Replay simulation** ([src/season_replay.py](../src/season_replay.py)): TC + BB are activated greedily in the per-half budget — TC fires when $q_{90,\text{cap}} - \mu_{\text{cap}} \geq 4.5$, BB when $\sum_{i \in \text{bench}} \mu_i \geq 10.0$, with force-activation at GW19 (set 1 deadline) and GW38 (set 2 deadline) to avoid expiry. WC + FH defer (require re-solving the squad inside the replay loop).
 
 ---
 
@@ -426,6 +432,7 @@ fpl-ml-manager/
 │   ├── recalibrate_points.py    # Per-(pos, quantile) affine recalibration for points head
 │   ├── recalibrate_minutes.py   # Per-pos isotonic recalibration for minutes / 90 head
 │   ├── league_table.py          # Pre-match standings + tier-distance stakes features
+│   ├── season_replay.py         # GW-by-GW backtest harness with chip simulation
 │   └── tune_dc_rho.py           # Grid-search Dixon-Coles ρ on walk-forward CS Brier
 ├── data/
 │   ├── players.csv, teams.csv, fixtures.csv, history.csv
@@ -443,7 +450,8 @@ fpl-ml-manager/
 │   ├── README.md                # This file
 │   └── FPL_101.md               # Domain primer
 └── .github/workflows/
-    └── pipeline.yml        # GitHub Actions: 05:30 + 17:30 UTC daily
+    ├── pipeline.yml             # GitHub Actions: 05:30 + 17:30 UTC daily
+    └── season_replay.yml        # workflow_dispatch GW-by-GW backtest
 ```
 
 ---
@@ -510,6 +518,8 @@ Recalibration auto-fires inside `python src/main.py` when `data/points_recalib.j
 
 ## 10. Recently Shipped
 
+- **Season replay backtest harness + chip simulation** ([src/season_replay.py](../src/season_replay.py), [.github/workflows/season_replay.yml](../.github/workflows/season_replay.yml)). Walk-forward by GW from a configurable start: filter history to `round < G` in the current season, build engine, cold-start at first GW (`solve_initial_squad`) then RHC after, score against actual `total_points`. GW1 graft: most recent per-player row from prior seasons relabelled `season=SEASON` so `_latest_rolling` has a baseline (matches manager intuition for new-season cold starts — last-season xG/xA, transfer noise accepted). FPL 2025/26 chip rules wired in: 2× each chip, set 1 expires at GW19, set 2 valid GW20-38, TC = ×3, FH non-consecutive. TC + BB activate greedily per-half (force-fire at deadlines to avoid expiry); WC + FH deferred (need re-solving inside the loop). `workflow_dispatch` triggers a full Actions run; results pushed back to repo as `data/processed/season_replay.{md,csv}`.
+- **Hit cap, banking incentive, bank-leftover penalty** ([src/optimizer.py](../src/optimizer.py)). `solve_rhc_transfers` now defaults to `hit_cost = 6` (raised from FPL's nominal 4 — earlier replays burned ~40 hits/season for -160 net) with `hit_cap_per_gw = 1` hard ceiling. New `bank_transfer_weight = 0.3` term `+ω · sv_t` rewards rolling FTs (constraint slack alone gave the solver no upside in saving). `solve_initial_squad` adds `bank_penalty = 0.5` flat EV cost per £1m unspent — stops noisy early-season cold-start parking £10m+ in bank when premium picks barely outscore cheap ones.
 - **Stakes features: tier-distance + late-season motivation** ([src/league_table.py](../src/league_table.py)). Pre-match standings reconstructed per (season, event) from finished fixtures with `cumsum().shift(1)` on a (season × team × 1..38 GW) grid so opponents' state is available even on blank GWs. New cols (per side, signed-gap normalised by `3 × gws_remaining`): `pts_to_title_norm` (1st), `pts_to_top4_norm` (UCL), `pts_to_top6_norm` (UEL/UECL band), `pts_to_safety_norm` (17th), `in_drop_zone`, `rank`, `ppg`, `gws_remaining`. Match model gets `h_*` + `a_*`; points model side-conditions to `own_*` / `opp_*`. Encodes "Arsenal title-chasing fully engaged" / "WHU mid-table on beach mode" — structural signal EMA rolling form lags on by halflife=2.5 GW. Schema drift guard auto-retrains heads on next pipeline run.
 - **Feature-schema drift retrain guard** ([src/main.py](../src/main.py)). `_ensure_models` now probes each cached booster's stored `feature_names` via `_booster_features` and forces a retrain when it diverges from the current `features.py` output (`_schema_drift`). Retrain also wipes the matching recalib JSON so `_maybe_recalibrate` re-fits against fresh raw quantiles. Fixes XGBoost `feature_names mismatch` on GitHub Actions runs that always pull HEAD's stale committed artifacts.
 - **GW-in-play pipeline guard** ([src/main.py](../src/main.py)). `_gw_in_play` short-circuits `main()` when any current-season fixture is live (kickoff in [now − 3 h, now], `finished=False`) or imminent (kickoff in [now, now + 2 h]). Prevents producing a lineup the user can't act on between deadline and final whistle. GitHub Actions cron (`30 5,17 * * *`) still fires unconditionally; guard exits early after checkout + setup.
@@ -535,7 +545,9 @@ Open items, ordered by impact:
 3. **Correlated-risk portfolio objective (MIQP).** Replace diagonal linear $-\nu \hat{s}_{i,t}$ penalty in §5.2 with full quadratic $x^\top \Sigma x$ — Σ now estimable from MC draws in §4 — once MIQP solver (Gurobi/CPLEX/SCIP) wired in. CBC LP-only.
 4. **Set-piece and manager regime changes.** Embedding-based detection of regime breaks (new manager, new set-piece taker) invalidating historical rolling features. EMA features partially help by weighting recent observations more, but step-change still bleeds through half-life window.
 5. **Learned chip scheduler.** Re-formulate chip activation as jointly-solved MILP extension rather than post-hoc heuristics in §6. Chip-EV path-dependent on transfer plan + DGW timing.
-6. **Empirical MC team-ρ.** `MC_TEAM_RHO = 0.4` in §4.9 hand-set. Fit per-position-pair correlation from history: residualise actual points by predicted $\mu_{i,t}$, compute correlation of residuals across same-team-same-GW player pairs. Likely position-pair dependent (CB-CB high under CS, GK-FWD low). Constant ρ proxy until then.
+6. **WC + FH simulation in season replay.** §6 describes both, but `season_replay.py` only simulates TC + BB. WC requires re-solving the squad with unlimited free transfers; FH solves a one-GW temp squad and reverts. Both straightforward extensions of `solve_initial_squad` / `solve_rhc_transfers` — deferred only because they need re-solving inside the replay loop.
+7. **Strict walk-forward retraining in season replay.** Today the replay reuses production heads (trained on full season). Per-GW retrain on `round < G` would remove parameter-level leakage and produce an honest out-of-sample number. Cost ~30 sec/GW × 36 GW = ~18 min/run.
+8. **Empirical MC team-ρ.** `MC_TEAM_RHO = 0.4` in §4.9 hand-set. Fit per-position-pair correlation from history: residualise actual points by predicted $\mu_{i,t}$, compute correlation of residuals across same-team-same-GW player pairs. Likely position-pair dependent (CB-CB high under CS, GK-FWD low). Constant ρ proxy until then.
 
 ---
 
