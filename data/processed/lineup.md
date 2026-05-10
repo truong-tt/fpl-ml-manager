@@ -1,8 +1,8 @@
 # GW36 Lineup
 
-- **Bank:** £1.5m
+- **Bank:** £1.4m
 - **Hits:** 0
-- **Squad Value:** £98.5m
+- **Squad Value:** £98.6m
 - **XI Expected Points (incl. captain):** 89.5
 
 ## Starting XI
@@ -27,17 +27,15 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Lammens | MUN | GK | 5.1 | 5.75 | 14.48 |  |
 | Dewsbury-Hall | EVE | MID | 5.2 | 3.42 | 11.69 |  |
-| Casemiro | MUN | MID | 5.8 | 4.03 | 11.69 |  |
+| Casemiro | MUN | MID | 5.9 | 4.03 | 11.69 |  |
 | E.Le Fée | SUN | MID | 4.8 | 3.78 | 10.08 |  |
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Thiago | Welbeck |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW36 — Haaland (+15.9 pts)
 - **Bench Boost:** GW37 (+17.3 pts)
-- **Wildcard:** hold (1 suggested transfers, 0 hits)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
