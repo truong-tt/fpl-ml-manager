@@ -1,6 +1,8 @@
 """FPLEngine. Per-(player, GW) projection frame for optimizer."""
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -22,7 +24,26 @@ BONUS_BLEND = 1.0
 # (matches prior diagonal aggregation). Rho>0 captures within-club covariance:
 # clean sheet correlates DEF + GK upside; strong attack correlates MID + FWD.
 MC_SAMPLES = 800
-MC_TEAM_RHO = 0.4
+MC_TEAM_RHO_FALLBACK = 0.4
+_TEAM_RHO_PATH = Path(__file__).resolve().parent.parent / "data" / "team_rho.json"
+
+
+def _load_team_rho_default() -> float:
+    """Read empirical rho from `data/team_rho.json` (written by
+    `fit_team_rho.py`). Falls back to MC_TEAM_RHO_FALLBACK when missing or
+    malformed so the engine remains usable on a fresh checkout. Negative
+    values are clipped to 0 (the joint-MC math assumes 0 ≤ rho ≤ 1)."""
+    if not _TEAM_RHO_PATH.exists():
+        return MC_TEAM_RHO_FALLBACK
+    try:
+        d = json.loads(_TEAM_RHO_PATH.read_text(encoding="utf-8"))
+        v = float(d.get("rho_global", MC_TEAM_RHO_FALLBACK))
+        return float(np.clip(v, 0.0, 1.0))
+    except (ValueError, OSError, TypeError):
+        return MC_TEAM_RHO_FALLBACK
+
+
+MC_TEAM_RHO = _load_team_rho_default()
 
 
 # Swanson / Keefer-Bodily 3-point estimator weights. Calibrated to skewed

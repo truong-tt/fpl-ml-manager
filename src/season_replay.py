@@ -9,6 +9,14 @@ seen rounds >= G, so projected μ for GW G inherits some of the future
 in its parameters even if the rolling features are filtered. Treat the
 total as an upper bound on a clean walk-forward season.
 
+All four chips are simulated: TC, BB, WC, FH. WC re-runs the cold-start
+solver with current cash (unlimited free transfers); FH re-runs it on a
+single-GW projection slice and the squad reverts the next GW. WC + FH
+alt-solves are gated by an attempt-window list per half plus the
+half-deadline force-fire to keep the replay loop's cost bounded. At
+most one chip fires per GW (FPL rule). When multiple chips are eligible
+the highest-uplift candidate wins.
+
 Output: data/processed/season_replay.md plus a per-GW CSV.
 
 CLI:
@@ -41,8 +49,17 @@ HORIZON = 8
 # (instead of x2). BB = bench pts also count.
 TC_TRIGGER_PREMIUM = 4.5   # use TC when (q90_cap - mu_cap) >= this
 BB_TRIGGER_BENCH_EV = 10.0  # use BB when bench mu sum >= this
+WC_TRIGGER = 8.0           # use WC when horizon-discounted XI EV uplift >= this
+FH_TRIGGER = 6.0           # use FH when single-GW XI EV uplift >= this
+WC_FH_TIME_LIMIT = 30      # CBC seconds for WC/FH alt-solves (vs 60 default)
 HALF1_END = 19
 HALF2_END = 38
+
+# Window of GWs at which we attempt a WC/FH alt-solve. Keeps the replay loop
+# bounded — each alt-solve is a full cold-start MILP. The half-deadline GWs
+# are always added at runtime to guarantee force-fire still works.
+WC_ATTEMPT_GWS = {1: {8, 12, 16, 19}, 2: {26, 30, 34, 38}}
+FH_ATTEMPT_GWS = {1: {6, 8, 14, 18, 19}, 2: {26, 28, 33, 36, 38}}
 
 
 def _filter_history(history: pd.DataFrame, season: str, before_gw: int) -> pd.DataFrame:
@@ -72,6 +89,48 @@ def _last_finished_gw(fixtures: pd.DataFrame, season: str) -> int:
     fin = fx["finished"].astype(str).str.lower().isin(("true", "1"))
     done = fx[fin]
     return int(done["event"].max()) if not done.empty else 0
+
+
+def _one_gw_proj(proj: pd.DataFrame, gw: int) -> pd.DataFrame:
+    """Slice projection to a single GW. Drops `xp_*`, `cap_xp_*`, `var_*` cols
+    for any other GW so `_gws()` collapses to `[gw]` and the optimizer solves a
+    one-GW lineup. Used for FH simulation where the temp squad lives one GW
+    only and reverts. All non-GW columns (price/pos_id/team_id/eo) preserved."""
+    keep = {f"xp_{gw}", f"cap_xp_{gw}", f"var_{gw}"}
+    drop = [c for c in proj.columns
+            if c.startswith(("xp_", "cap_xp_", "var_")) and c not in keep]
+    return proj.drop(columns=drop)
+
+
+def _xi_one_gw_ev(proj: pd.DataFrame, xi_ids: set[int], cap_id: int, gw: int) -> float:
+    """Sum of XI's `xp_{gw}` plus captain bonus (`cap_xp - xp` for the picked
+    captain). Used as one-GW EV proxy for FH uplift trigger."""
+    if not xi_ids:
+        return 0.0
+    xp_col = f"xp_{gw}"
+    cap_col = f"cap_xp_{gw}"
+    if xp_col not in proj.columns:
+        return 0.0
+    s = float(proj.loc[proj["id"].isin(xi_ids), xp_col].sum())
+    if cap_col in proj.columns and cap_id in xi_ids:
+        cap_row = proj.loc[proj["id"] == cap_id]
+        if not cap_row.empty:
+            s += float(cap_row[cap_col].iloc[0]) - float(cap_row[xp_col].iloc[0])
+    return s
+
+
+def _xi_horizon_ev(proj: pd.DataFrame, xi_ids: set[int], cap_id: int) -> float:
+    """Geometric-discounted (γ=0.85) horizon sum of XI EV with captain bonus.
+    Matches optimizer's `RHC_DISCOUNT`. Approximation: assumes XI fixed across
+    horizon (real RHC rotates per GW). OK as trigger proxy — both branches
+    (current and WC) use the same approximation, so the *difference* is
+    structurally fair."""
+    gws = sorted(int(c.split("_")[1]) for c in proj.columns if c.startswith("xp_"))
+    s = 0.0
+    for k, t in enumerate(gws):
+        w = 0.85 ** k
+        s += w * _xi_one_gw_ev(proj, xi_ids, cap_id, t)
+    return s
 
 
 def _score_xi(history: pd.DataFrame, season: str, gw: int,
@@ -161,54 +220,129 @@ def replay(start_gw: int = 1, end_gw: int | None = None,
             squad_val = float(proj[proj["id"].isin(squad_ids)]["price"].sum())
             bank = round(budget - squad_val, 1)
 
-        # Chip decision (greedy, per-half). Only applied to TC + BB here;
-        # WC + FH require re-solving the squad and are deferred.
+        # Chip decision. FPL rule: at most 1 chip per GW. Pick highest-uplift
+        # candidate above its trigger; force-fire one at the half-deadline so
+        # unused chips don't expire.
         half = 1 if G <= HALF1_END else 2
-        force_use_half1 = (G == HALF1_END)  # use-or-lose at half 1 deadline
+        force_use_half1 = (G == HALF1_END)
         force_use_half2 = (G == HALF2_END)
         force = force_use_half1 or force_use_half2
         bench_ids = squad_ids - xi_ids
 
-        # Captaincy upside premium for TC.
+        # TC: captain upside premium = q90_cap - mu_cap.
         gw_col_q90 = f"cap_xp_{G}" if f"cap_xp_{G}" in proj.columns else f"xp_{G}"
         cap_q90 = float(proj.loc[proj["id"] == cap, gw_col_q90].iloc[0])
         cap_mu = float(proj.loc[proj["id"] == cap, f"xp_{G}"].iloc[0])
         tc_premium = cap_q90 - cap_mu
+        # BB: bench mu sum.
         bench_ev = float(proj.loc[proj["id"].isin(bench_ids), f"xp_{G}"].sum())
 
-        tc_key = f"tc{half}"
-        bb_key = f"bb{half}"
-        tc_active = chips.get(tc_key, False) and (
-            tc_premium >= TC_TRIGGER_PREMIUM
-            or (force and chips.get(tc_key))
-        )
-        bb_active = chips.get(bb_key, False) and (
-            bench_ev >= BB_TRIGGER_BENCH_EV
-            or (force and chips.get(bb_key))
-        )
-        # Don't double-up TC + BB on the same GW unless both forced; spreads
-        # chip impact across more GWs.
-        if tc_active and bb_active and not force:
-            if tc_premium >= bench_ev / 2:
-                bb_active = False
-            else:
-                tc_active = False
+        tc_key, bb_key = f"tc{half}", f"bb{half}"
+        wc_key, fh_key = f"wc{half}", f"fh{half}"
+
+        # WC alt-solve. Only at attempt-window GWs (or at force) and only when
+        # chip available. Re-solves cold-start with current cash; full transfer
+        # freedom modelled by treating squad as fresh.
+        wc_uplift = float("-inf")
+        wc_squad_ids: set[int] | None = None
+        wc_xi_ids: set[int] | None = None
+        wc_cap_id: int | None = None
+        wc_vice_id: int | None = None
+        try_wc = (chips.get(wc_key, False) and prior_squad is not None
+                  and (G in WC_ATTEMPT_GWS.get(half, set()) or force))
+        if try_wc:
+            wc_df = solve_initial_squad(proj, budget=squad_val + bank,
+                                        time_limit=WC_FH_TIME_LIMIT)
+            if not wc_df.empty:
+                wc_squad_ids = set(wc_df["id"].astype(int))
+                wc_xi_ids = set(wc_df[wc_df["in_xi"] == 1]["id"].astype(int))
+                wc_cap_id = int(wc_df[wc_df["is_captain"] == 1]["id"].iloc[0])
+                wc_vice_id = int(wc_df[wc_df["is_vice"] == 1]["id"].iloc[0])
+                wc_uplift = (_xi_horizon_ev(proj, wc_xi_ids, wc_cap_id)
+                             - _xi_horizon_ev(proj, xi_ids, cap))
+
+        # FH alt-solve. One-GW slice; squad reverts after this GW.
+        fh_uplift = float("-inf")
+        fh_xi_ids: set[int] | None = None
+        fh_cap_id: int | None = None
+        fh_vice_id: int | None = None
+        try_fh = (chips.get(fh_key, False) and prior_squad is not None
+                  and (G - last_fh_gw) > 1
+                  and (G in FH_ATTEMPT_GWS.get(half, set()) or force))
+        if try_fh:
+            fh_df = solve_initial_squad(_one_gw_proj(proj, G),
+                                        budget=squad_val + bank,
+                                        time_limit=WC_FH_TIME_LIMIT)
+            if not fh_df.empty:
+                fh_xi_ids = set(fh_df[fh_df["in_xi"] == 1]["id"].astype(int))
+                fh_cap_id = int(fh_df[fh_df["is_captain"] == 1]["id"].iloc[0])
+                fh_vice_id = int(fh_df[fh_df["is_vice"] == 1]["id"].iloc[0])
+                fh_uplift = (_xi_one_gw_ev(proj, fh_xi_ids, fh_cap_id, G)
+                             - _xi_one_gw_ev(proj, xi_ids, cap, G))
+
+        # Candidate list: (chip_token, uplift, met_trigger_flag).
+        cands = []
+        if chips.get(tc_key, False):
+            cands.append(("tc", tc_premium, tc_premium >= TC_TRIGGER_PREMIUM))
+        if chips.get(bb_key, False):
+            cands.append(("bb", bench_ev, bench_ev >= BB_TRIGGER_BENCH_EV))
+        if chips.get(wc_key, False) and wc_uplift > float("-inf"):
+            cands.append(("wc", wc_uplift, wc_uplift >= WC_TRIGGER))
+        if chips.get(fh_key, False) and fh_uplift > float("-inf"):
+            cands.append(("fh", fh_uplift, fh_uplift >= FH_TRIGGER))
+
+        chip_choice: str | None = None
+        if force and cands:
+            # Pick best regardless of trigger so unused chips don't expire.
+            chip_choice = max(cands, key=lambda c: c[1])[0]
+        else:
+            triggered = [c for c in cands if c[2]]
+            if triggered:
+                chip_choice = max(triggered, key=lambda c: c[1])[0]
+
+        tc_active = chip_choice == "tc"
+        bb_active = chip_choice == "bb"
+        wc_active = chip_choice == "wc"
+        fh_active = chip_choice == "fh"
+
+        # WC: replace squad path going forward.
+        if wc_active and wc_squad_ids is not None:
+            squad_ids = wc_squad_ids
+            xi_ids = wc_xi_ids or xi_ids
+            cap = wc_cap_id if wc_cap_id is not None else cap
+            vice = wc_vice_id if wc_vice_id is not None else vice
+            n_in = len(squad_ids - (prior_squad or set()))
+            hits = 0
+            squad_val = float(proj[proj["id"].isin(squad_ids)]["price"].sum())
+            bank = round(budget - squad_val, 1)
+            bench_ids = squad_ids - xi_ids
+            chips[wc_key] = False
+
+        # FH: temp XI for scoring; squad/bank/ft revert.
+        score_xi_ids = xi_ids
+        score_bench_ids = bench_ids
+        score_cap = cap
+        score_vice = vice
+        if fh_active and fh_xi_ids is not None:
+            score_xi_ids = fh_xi_ids
+            score_bench_ids = set()  # FH bench irrelevant; no BB stack.
+            score_cap = fh_cap_id if fh_cap_id is not None else cap
+            score_vice = fh_vice_id if fh_vice_id is not None else vice
+            chips[fh_key] = False
+            last_fh_gw = G
 
         if tc_active:
             chips[tc_key] = False
         if bb_active:
             chips[bb_key] = False
 
-        score = _score_xi(history, season, G, xi_ids, bench_ids, cap, vice,
+        score = _score_xi(history, season, G, score_xi_ids, score_bench_ids,
+                          score_cap, score_vice,
                           tc_active=tc_active, bb_active=bb_active)
         gw_total = (score["xi_pts"] + score["cap_pts"] + score["bench_pts"]
                     - 4 * hits)
 
-        chip_tag = ""
-        if tc_active:
-            chip_tag += "TC"
-        if bb_active:
-            chip_tag += ("+" if chip_tag else "") + "BB"
+        chip_tag = chip_choice.upper() if chip_choice else ""
 
         rows.append({
             "gw": G,
@@ -229,8 +363,14 @@ def replay(start_gw: int = 1, end_gw: int | None = None,
               f"{bb_note} hits=-{4 * hits:2d} -> {gw_total:5.1f}  "
               f"in={n_in} bank={bank} {chip_tag}")
 
-        prior_squad = squad_ids
-        ft = min(5, ft + 1) if n_in == 0 else 1
+        # FH does not change the persistent squad / bank / FT.
+        if not fh_active:
+            prior_squad = squad_ids
+            # WC resets FT to 1 next GW (FPL rule). Otherwise standard banking.
+            if wc_active:
+                ft = 1
+            else:
+                ft = min(5, ft + 1) if n_in == 0 else 1
 
     return pd.DataFrame(rows)
 
