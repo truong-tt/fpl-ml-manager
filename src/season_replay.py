@@ -185,6 +185,29 @@ def replay(start_gw: int = 1, end_gw: int | None = None,
              "fh1": True, "fh2": True, "wc1": True, "wc2": True}
     last_fh_gw = -10
 
+    # Effective deadlines respect both FPL's GW19/GW38 cutoffs AND the replay
+    # window. Without this, a replay ending before HALF2_END (e.g. mid-season
+    # at last_finished_gw=27) never force-fires set-2 chips → TC2/WC2/FH2/BB2
+    # stay unused. We force on the last GW the replay actually visits within
+    # each half so every available chip gets a fair chance to fire.
+    half1_deadline = min(HALF1_END, end_gw) if start_gw <= HALF1_END else None
+    half2_deadline = min(HALF2_END, end_gw) if end_gw > HALF1_END else None
+    half2_open_gw = max(start_gw, HALF1_END + 1)
+
+    # Always extend WC/FH attempt windows with their respective deadlines so a
+    # force fires the alt-solve even when the deadline GW isn't in the static
+    # WC_ATTEMPT_GWS / FH_ATTEMPT_GWS sets above.
+    wc_windows = {1: set(WC_ATTEMPT_GWS.get(1, set())),
+                  2: set(WC_ATTEMPT_GWS.get(2, set()))}
+    fh_windows = {1: set(FH_ATTEMPT_GWS.get(1, set())),
+                  2: set(FH_ATTEMPT_GWS.get(2, set()))}
+    if half1_deadline is not None:
+        wc_windows[1].add(half1_deadline)
+        fh_windows[1].add(half1_deadline)
+    if half2_deadline is not None and half2_deadline >= half2_open_gw:
+        wc_windows[2].add(half2_deadline)
+        fh_windows[2].add(half2_deadline)
+
     for G in range(start_gw, end_gw + 1):
         hist_pre = _filter_history(history, season, G)
         engine = FPLEngine(fixtures, hist_pre, players, teams)
@@ -222,10 +245,11 @@ def replay(start_gw: int = 1, end_gw: int | None = None,
 
         # Chip decision. FPL rule: at most 1 chip per GW. Pick highest-uplift
         # candidate above its trigger; force-fire one at the half-deadline so
-        # unused chips don't expire.
+        # unused chips don't expire. Deadlines clamped to the replay window so
+        # mid-season replays still force-fire set-2 chips at end_gw.
         half = 1 if G <= HALF1_END else 2
-        force_use_half1 = (G == HALF1_END)
-        force_use_half2 = (G == HALF2_END)
+        force_use_half1 = (half1_deadline is not None and G == half1_deadline)
+        force_use_half2 = (half2_deadline is not None and G == half2_deadline)
         force = force_use_half1 or force_use_half2
         bench_ids = squad_ids - xi_ids
 
@@ -249,7 +273,7 @@ def replay(start_gw: int = 1, end_gw: int | None = None,
         wc_cap_id: int | None = None
         wc_vice_id: int | None = None
         try_wc = (chips.get(wc_key, False) and prior_squad is not None
-                  and (G in WC_ATTEMPT_GWS.get(half, set()) or force))
+                  and (G in wc_windows.get(half, set()) or force))
         if try_wc:
             wc_df = solve_initial_squad(proj, budget=squad_val + bank,
                                         time_limit=WC_FH_TIME_LIMIT)
@@ -268,7 +292,7 @@ def replay(start_gw: int = 1, end_gw: int | None = None,
         fh_vice_id: int | None = None
         try_fh = (chips.get(fh_key, False) and prior_squad is not None
                   and (G - last_fh_gw) > 1
-                  and (G in FH_ATTEMPT_GWS.get(half, set()) or force))
+                  and (G in fh_windows.get(half, set()) or force))
         if try_fh:
             fh_df = solve_initial_squad(_one_gw_proj(proj, G),
                                         budget=squad_val + bank,
