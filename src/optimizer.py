@@ -143,10 +143,22 @@ def solve_initial_squad(
 def solve_rhc_transfers(
     proj: pd.DataFrame, current_squad_ids: set[int],
     bank: float, free_transfers: int, lambda_var: float = 0.02,
-    lambda_eo: float = 0.0, bench_weight: float = 0.15, time_limit: int = 180,
+    lambda_eo: float = 0.0, bench_weight: float = 0.15,
+    hit_cost: float = 6.0, hit_cap_per_gw: int = 1,
+    bank_transfer_weight: float = 0.3, time_limit: int = 60,
     attenuation: list[float] | None = None,
 ) -> dict[str, Any]:
-    """Receding-horizon transfer planner. Return this-GW squad / XI / captain / transfers."""
+    """Receding-horizon transfer planner. Return this-GW squad / XI / captain / transfers.
+
+    hit_cost: pts deducted per hit. FPL rule = 4. Raise to discourage churn -
+        prior runs took ~40 hits/season (-160 pts), top managers 4-8.
+    hit_cap_per_gw: max hits per GW. Default 1 (= 1 extra transfer beyond
+        FT, costing 4 pts). Hard ceiling stops the solver chasing 8-pt+
+        marginal gains it can rarely realise.
+    bank_transfer_weight: positive EV reward per saved transfer. FT roll-over
+        carries option value (best-pick-next-week). Without this term sv=0
+        always (no upside in solver, only constraint slack). Tune.
+    """
     if proj.empty:
         return {"status": "empty"}
     proj = proj.copy().set_index("id")
@@ -177,8 +189,14 @@ def solve_rhc_transfers(
                         + cap_xp * c[i][t])
             obj += -w * lambda_var * var * x[i][t]
             obj += w * lambda_eo * xp * (1.0 - eo) * x[i][t]
-    # Hits cost real, not attenuated.
-    obj += -pulp.lpSum(4 * hits[t] for t in gws)
+    # Hits cost real, not attenuated. Raised default 4 -> hit_cost so solver
+    # only takes a hit when next-GW expected gain genuinely exceeds the cost.
+    obj += -pulp.lpSum(hit_cost * hits[t] for t in gws)
+    # Banking-roll incentive: each saved FT carries option value (pick best
+    # transfer next GW). Attenuated like other per-GW terms so solver doesn't
+    # game by stockpiling far-horizon saves it never spends.
+    if bank_transfer_weight > 0.0:
+        obj += pulp.lpSum(att[t] * bank_transfer_weight * sv[t] for t in gws)
     prob += obj
 
     cur_val = (proj.loc[list(current_squad_ids & set(ids))]["price"].sum()
@@ -202,6 +220,8 @@ def solve_rhc_transfers(
         total_in = pulp.lpSum(tin[i][t] for i in ids)
         prob += ft[t] == (free_transfers if k == 0 else 1 + sv[gws[k - 1]])
         prob += total_in == (ft[t] - sv[t]) + hits[t]
+        # Per-GW hit cap. Stops solver eating multi-hit gambles in a single GW.
+        prob += hits[t] <= hit_cap_per_gw
 
     prob.solve(pulp.PULP_CBC_CMD(msg=False, timeLimit=time_limit))
     if pulp.LpStatus[prob.status] not in ("Optimal", "Not Solved"):
