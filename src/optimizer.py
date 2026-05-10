@@ -74,10 +74,20 @@ def _extract(
 def solve_initial_squad(
     proj: pd.DataFrame, budget: float = 100.0,
     lambda_var: float = 0.02, lambda_eo: float = 0.0,
-    bench_weight: float = 0.15, time_limit: int = 60,
+    bench_weight: float = 0.15, bank_penalty: float = 0.5,
+    time_limit: int = 60,
     attenuation: list[float] | None = None,
 ) -> pd.DataFrame:
-    """Cold-start 15-man squad + per-GW XI/captain over horizon."""
+    """Cold-start 15-man squad + per-GW XI/captain over horizon.
+
+    bank_penalty: flat EV cost per £1m of unspent budget. Implemented as a
+    + bank_penalty * price coefficient in the objective (the additive
+    `−bank_penalty * budget` term is constant and drops out). Early-season
+    noisy projections leave premium picks only marginally above cheap ones
+    in μ; a non-zero penalty breaks the tie by pushing the solver to spend
+    the full budget rather than parking £10m+ in the bank. Set to 0.0 to
+    recover the previous "≤ budget, no incentive to spend" behaviour.
+    """
     if proj.empty:
         return pd.DataFrame()
     proj = proj.copy().set_index("id")
@@ -105,6 +115,9 @@ def solve_initial_squad(
                         + cap_xp * c[i][t])
             obj += -(w * lambda_var * var / n_gw) * x[i]
             obj += (w * lambda_eo * xp * (1.0 - eo) / n_gw) * x[i]
+    # Bank-leftover penalty (B). Constant `−bank_penalty * budget` dropped.
+    if bank_penalty > 0.0:
+        obj += bank_penalty * pulp.lpSum(proj.loc[i, "price"] * x[i] for i in ids)
     prob += obj
 
     prob += pulp.lpSum(x[i] for i in ids) == SQUAD_SIZE
