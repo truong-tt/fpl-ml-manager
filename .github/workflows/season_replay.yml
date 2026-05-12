@@ -1,9 +1,14 @@
 name: Season Replay
 
-# Manually triggered season-long replay. Walks the model GW-by-GW
-# from `start_gw`, accumulates actual FPL points scored by chosen XI +
-# captain. Output published to job summary and committed to the repo.
+# Auto-runs after FPL Daily Update succeeds. Detects newly fully-finished
+# GW from data/fixtures.csv (every fixture row with event==N must have
+# finished=True — naturally handles DGW where one event has >10 fixtures
+# and BGW where it has <10). Skips when no new GW has completed since
+# last replay. Also manually dispatchable.
 on:
+  workflow_run:
+    workflows: ["FPL Daily Update"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       start_gw:
@@ -22,6 +27,10 @@ on:
         description: 'Initial budget (£m)'
         default: '100'
         required: false
+      force:
+        description: 'Force run even if no new finished GW'
+        default: 'false'
+        required: false
 
 permissions:
   contents: write
@@ -30,14 +39,29 @@ concurrency:
   group: fpl-replay
   cancel-in-progress: false
 
+env:
+  SEASON: ${{ github.event.inputs.season || '2025-2026' }}
+  START_GW: ${{ github.event.inputs.start_gw || '1' }}
+  END_GW: ${{ github.event.inputs.end_gw || '' }}
+  BUDGET: ${{ github.event.inputs.budget || '100' }}
+  FORCE: ${{ github.event.inputs.force || 'false' }}
+
 jobs:
   replay:
+    # workflow_run fires on any conclusion; only proceed if upstream succeeded.
+    # Manual dispatch always proceeds.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # workflow_run runs against the workflow file on the default branch
+          # but checks out that commit by default — explicit ref keeps us on
+          # main where the pipeline just pushed fresh fixtures.csv.
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -49,23 +73,69 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Detect newly fully-finished GW
+        id: gw
+        run: |
+          python - <<'PY'
+          import os
+          import pandas as pd
+
+          season = os.environ["SEASON"]
+
+          # Fully-finished GW: max event N where ALL fixture rows with event==N
+          # have finished=True. DGW = >10 fixtures for one event; BGW = <10.
+          # Either way every row for that event must be finished.
+          fx = pd.read_csv("data/fixtures.csv", low_memory=False)
+          fx = fx[fx["season"].astype(str) == season]
+          fx["fin"] = fx["finished"].astype(str).str.lower().isin(("true", "1"))
+          by_event = fx.groupby("event")["fin"].all()
+          done_events = by_event[by_event].index.astype(int)
+          last_fin = int(done_events.max()) if len(done_events) else 0
+
+          # Last GW already replayed (CSV is overwritten each run from gw1).
+          try:
+              rp = pd.read_csv("data/processed/season_replay.csv")
+              last_replayed = int(rp["gw"].max()) if not rp.empty else 0
+          except FileNotFoundError:
+              last_replayed = 0
+
+          force = os.environ.get("FORCE", "false").lower() == "true"
+          should_run = force or (last_fin > 0 and last_fin > last_replayed)
+
+          print(f"season={season} last_fin={last_fin} last_replayed={last_replayed} force={force} should_run={should_run}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"last_fin={last_fin}\n")
+              f.write(f"last_replayed={last_replayed}\n")
+              f.write(f"should_run={'true' if should_run else 'false'}\n")
+          PY
+
+      - name: Skip — no new finished GW
+        if: steps.gw.outputs.should_run != 'true'
+        run: |
+          echo "No new fully-finished GW since last replay (last_fin=${{ steps.gw.outputs.last_fin }}, last_replayed=${{ steps.gw.outputs.last_replayed }}). Skipping."
+
       - name: Refresh data + train models
+        if: steps.gw.outputs.should_run == 'true'
         # Reuses production pipeline. Skips internal _gw_in_play guard
         # because we want models fresh against committed CSVs.
         run: python -u src/main.py || true
 
       - name: Run season replay
+        if: steps.gw.outputs.should_run == 'true'
         run: |
-          ARGS="--start ${{ inputs.start_gw }} --season ${{ inputs.season }} --budget ${{ inputs.budget }}"
-          if [ -n "${{ inputs.end_gw }}" ]; then
-            ARGS="$ARGS --end ${{ inputs.end_gw }}"
+          ARGS="--start ${START_GW} --season ${SEASON} --budget ${BUDGET}"
+          if [ -n "${END_GW}" ]; then
+            ARGS="$ARGS --end ${END_GW}"
           fi
           python -u src/season_replay.py $ARGS
 
       - name: Publish replay to Job Summary
+        if: steps.gw.outputs.should_run == 'true'
         run: cat data/processed/season_replay.md >> $GITHUB_STEP_SUMMARY
 
       - name: Commit + push results
+        if: steps.gw.outputs.should_run == 'true'
         run: |
           git config --global user.name "Replay Bot"
           git config --global user.email "bot@noreply.github.com"
