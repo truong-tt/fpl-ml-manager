@@ -21,7 +21,6 @@ import xgboost as xgb
 from features import (build_match_features, build_player_features,
                       match_feature_cols, minutes_feature_cols,
                       points_feature_cols)
-from train_match_model import score_matrix
 from train_points_model import (POSITIONS, QUANTILES, _monotone_constraints,
                                  _pos_feature_cols, _row_pos)
 
@@ -237,12 +236,8 @@ def walk_forward_match(holdout_gws: list[int], fixtures: pd.DataFrame,
         dm = xgb.DMatrix(Xte)
         lh = boosters["home"].predict(dm)
         la = boosters["away"].predict(dm)
-        cs_h_p = np.zeros(len(test))
-        cs_a_p = np.zeros(len(test))
-        for i, (lh_i, la_i) in enumerate(zip(lh, la)):
-            M = score_matrix(float(lh_i), float(la_i))
-            cs_h_p[i] = M[:, 0].sum()
-            cs_a_p[i] = M[0, :].sum()
+        cs_h_p = np.exp(-la)
+        cs_a_p = np.exp(-lh)
         gh = test["team_h_score"].astype(int).values
         ga = test["team_a_score"].astype(int).values
         chunks.append(pd.DataFrame({

@@ -344,8 +344,8 @@ def write_markdown_report(path: Path, holdout: list[int],
         "   under-fire — boom GWs are missed. Apply isotonic recalibration on residuals.",
         "2. **Position skew**: large gaps in one position only point to data scarcity",
         "   (FWD set is smallest at ~3k rows) or feature inadequacy for that position.",
-        "3. **Match `cs_rate_gap`**: marginal Poisson calibration. DC ρ does NOT move",
-        "   marginals (τ conserves row/column sums) — tune ρ on joint NLL via tune_dc_rho.py.",
+        "3. **Match `cs_rate_gap`**: marginal Poisson calibration. CS = P(opp goals = 0).",
+        "   Tune λ-head hyperparams if persistent positive/negative bias across seasons.",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
