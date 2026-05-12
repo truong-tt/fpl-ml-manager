@@ -3,32 +3,32 @@
 - **Bank:** £0.9m
 - **Hits:** 0
 - **Squad Value:** £99.1m
-- **XI Expected Points (incl. captain):** 62.0
+- **XI Expected Points (incl. captain):** 61.3
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Lammens | MUN | GK | 5.1 | 5.9 | 9.16 |  |
-| Cucurella | CHE | DEF | 6.1 | 6.01 | 10.96 |  |
-| Tarkowski | EVE | DEF | 5.7 | 5.58 | 9.64 |  |
-| Gusto | CHE | DEF | 4.8 | 5.47 | 10.15 |  |
-| Botman | NEW | DEF | 4.9 | 5.94 | 11.98 |  |
-| Thiaw | NEW | DEF | 4.9 | 6.18 | 12.22 |  |
-| Dewsbury-Hall | EVE | MID | 5.2 | 4.67 | 8.0 | (VC) |
-| O.Dango | BRE | MID | 5.7 | 4.47 | 7.11 |  |
-| B.Fernandes | MUN | MID | 10.4 | 9.84 | 9.31 | (C) |
-| Casemiro | MUN | MID | 5.9 | 4.26 | 8.01 |  |
-| Haaland | MCI | FWD | 14.7 | 3.72 | 8.44 |  |
+| Lammens | MUN | GK | 5.1 | 5.77 | 9.15 |  |
+| Cucurella | CHE | DEF | 6.1 | 6.17 | 11.21 |  |
+| Tarkowski | EVE | DEF | 5.7 | 5.4 | 9.39 |  |
+| Gusto | CHE | DEF | 4.8 | 5.38 | 9.94 |  |
+| Botman | NEW | DEF | 4.9 | 6.02 | 11.97 |  |
+| Thiaw | NEW | DEF | 4.9 | 6.11 | 12.0 |  |
+| O.Dango | BRE | MID | 5.7 | 4.57 | 7.05 |  |
+| Dewsbury-Hall | EVE | MID | 5.2 | 4.57 | 8.19 | (VC) |
+| B.Fernandes | MUN | MID | 10.4 | 9.25 | 9.12 | (C) |
+| Casemiro | MUN | MID | 5.9 | 4.29 | 7.98 |  |
+| Haaland | MCI | FWD | 14.7 | 3.79 | 8.75 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Pope | NEW | GK | 5.0 | 5.27 | 10.97 |  |
-| Cherki | MCI | MID | 6.6 | 3.65 | 8.25 |  |
-| Welbeck | BHA | FWD | 6.4 | 3.65 | 6.41 |  |
-| Bowen | WHU | FWD | 7.7 | 3.66 | 8.23 |  |
+| Pope | NEW | GK | 5.0 | 5.29 | 11.0 |  |
+| Cherki | MCI | MID | 6.6 | 3.57 | 8.05 |  |
+| Welbeck | BHA | FWD | 6.4 | 3.69 | 6.49 |  |
+| Bowen | WHU | FWD | 7.7 | 3.53 | 8.2 |  |
 
 ## Transfers
 
@@ -36,6 +36,6 @@ _Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW37 — B.Fernandes (+6.3 pts)
-- **Bench Boost:** GW38 (+17.6 pts)
+- **Triple Captain:** GW38 — Haaland (+6.4 pts)
+- **Bench Boost:** GW38 (+17.7 pts)
 - **Wildcard:** hold (0 suggested transfers, 0 hits)
