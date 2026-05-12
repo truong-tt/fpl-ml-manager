@@ -43,12 +43,25 @@ jobs:
       run: cat data/processed/lineup.md >> $GITHUB_STEP_SUMMARY
 
     - name: Commit and push changes
+      # Season Replay workflow uses a different concurrency group, so its push
+      # can land between our checkout and push. Rebase-and-retry on reject.
       run: |
+        set -e
         git config --global user.name "FPL Bot"
         git config --global user.email "bot@noreply.github.com"
 
         # Data CSVs, model artifacts, recalib JSONs, snapshot, lineup report.
         git add -f data/*.csv data/*.json data/processed/lineup.md data/processed/squad_snapshot.csv 2>/dev/null || true
 
-        git diff --staged --quiet || git commit -m "Pipeline run $(date -u +'%Y-%m-%d %H:%M UTC')"
-        git push
+        if git diff --staged --quiet; then
+          echo "No changes to commit."
+          exit 0
+        fi
+        git commit -m "Pipeline run $(date -u +'%Y-%m-%d %H:%M UTC')"
+        for i in 1 2 3 4 5; do
+          git pull --rebase origin main && git push && exit 0
+          echo "Push attempt $i failed; retrying after backoff."
+          sleep $((i * 5))
+        done
+        echo "Push failed after retries." >&2
+        exit 1
