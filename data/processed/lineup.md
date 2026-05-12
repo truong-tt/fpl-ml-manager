@@ -32,12 +32,10 @@
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| O'Reilly | Gusto |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW37 — B.Fernandes (+6.3 pts)
 - **Bench Boost:** GW38 (+17.6 pts)
-- **Wildcard:** hold (1 suggested transfers, 0 hits)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
