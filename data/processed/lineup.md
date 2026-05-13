@@ -3,7 +3,7 @@
 - **Bank:** £0.9m
 - **Hits:** 0
 - **Squad Value:** £99.1m
-- **XI Expected Points (incl. captain):** 61.8
+- **XI Expected Points (incl. captain):** 61.4
 
 ## Starting XI
 
@@ -13,10 +13,10 @@
 | Cucurella | CHE | DEF | 6.1 | 6.17 | 11.21 |  |
 | Tarkowski | EVE | DEF | 5.7 | 5.4 | 9.39 |  |
 | Gusto | CHE | DEF | 4.8 | 5.38 | 9.94 |  |
-| Botman | NEW | DEF | 4.9 | 6.28 | 12.19 |  |
-| Thiaw | NEW | DEF | 4.9 | 6.28 | 12.31 |  |
-| Dewsbury-Hall | EVE | MID | 5.2 | 4.57 | 8.19 | (VC) |
+| Botman | NEW | DEF | 4.9 | 6.08 | 12.03 |  |
+| Thiaw | NEW | DEF | 4.9 | 6.18 | 12.07 |  |
 | O.Dango | BRE | MID | 5.7 | 4.57 | 7.05 |  |
+| Dewsbury-Hall | EVE | MID | 5.2 | 4.57 | 8.19 | (VC) |
 | B.Fernandes | MUN | MID | 10.4 | 9.25 | 9.12 | (C) |
 | Casemiro | MUN | MID | 5.9 | 4.29 | 7.98 |  |
 | Haaland | MCI | FWD | 14.7 | 3.79 | 8.75 |  |
@@ -25,10 +25,10 @@
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Pope | NEW | GK | 5.0 | 5.32 | 11.0 |  |
+| Pope | NEW | GK | 5.0 | 5.74 | 11.44 |  |
 | Cherki | MCI | MID | 6.6 | 3.57 | 8.05 |  |
-| Welbeck | BHA | FWD | 6.4 | 3.61 | 6.4 |  |
-| Bowen | WHU | FWD | 7.7 | 3.53 | 8.2 |  |
+| Welbeck | BHA | FWD | 6.4 | 3.71 | 6.55 |  |
+| Bowen | WHU | FWD | 7.7 | 3.5 | 8.17 |  |
 
 ## Transfers
 
@@ -37,5 +37,5 @@ _Hold — no transfer beats a 4-pt hit._
 ## Chip Recommendations
 
 - **Triple Captain:** GW38 — Haaland (+6.4 pts)
-- **Bench Boost:** GW38 (+17.6 pts)
+- **Bench Boost:** GW38 (+17.7 pts)
 - **Wildcard:** hold (0 suggested transfers, 0 hits)
