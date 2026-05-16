@@ -92,9 +92,10 @@ jobs:
           done_events = by_event[by_event].index.astype(int)
           last_fin = int(done_events.max()) if len(done_events) else 0
 
-          # Last GW already replayed (CSV is overwritten each run from gw1).
+          # Last GW already replayed. CSV moved to data/ (state) — processed/
+          # holds the human-readable md only.
           try:
-              rp = pd.read_csv("data/processed/season_replay.csv")
+              rp = pd.read_csv("data/season_replay.csv")
               last_replayed = int(rp["gw"].max()) if not rp.empty else 0
           except FileNotFoundError:
               last_replayed = 0
@@ -145,7 +146,7 @@ jobs:
           set -e
           git config --global user.name "Replay Bot"
           git config --global user.email "bot@noreply.github.com"
-          git add -f data/processed/season_replay.md data/processed/season_replay.csv
+          git add -f data/processed/season_replay.md data/season_replay.csv
           if git diff --staged --quiet; then
             echo "No changes to commit."
             exit 0

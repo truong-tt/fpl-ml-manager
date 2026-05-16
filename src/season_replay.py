@@ -17,7 +17,12 @@ half-deadline force-fire to keep the replay loop's cost bounded. At
 most one chip fires per GW (FPL rule). When multiple chips are eligible
 the highest-uplift candidate wins.
 
-Output: data/processed/season_replay.md plus a per-GW CSV.
+Output:
+- data/processed/season_replay.md — human-readable per-GW table.
+- data/season_replay.csv — structured per-GW state. Lives in data/ (not
+  processed/) because the CI gate in .github/workflows/season_replay.yml
+  reads it to compute `last_replayed`. processed/ reserved for outputs
+  consumed by humans.
 
 CLI:
     python src/season_replay.py --start 1 [--end 36] [--budget 100]
@@ -454,7 +459,7 @@ def main() -> None:
 
     df = replay(args.start, args.end, args.season, args.budget)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    csv_path = OUT_DIR / "season_replay.csv"
+    csv_path = DATA_DIR / "season_replay.csv"
     md_path = OUT_DIR / "season_replay.md"
     df.to_csv(csv_path, index=False)
     md_path.write_text(render_report(df, args.season), encoding="utf-8")

@@ -5,7 +5,7 @@
 [![PuLP](https://img.shields.io/badge/PuLP-MILP%20%2B%20RHC-yellow.svg)](https://coin-or.github.io/pulp/)
 [![Schedule](https://img.shields.io/badge/GitHub_Actions-2%C3%97daily-lightgrey.svg)](../.github/workflows/pipeline.yml)
 
-Data-driven agent. Picks + manages 15-player FPL squad. Pipeline: quantile-regression boosting for per-position point distributions; independent Poisson for match goals; MILP for squad + XI + captain over rolling horizon; greedy chip scheduling. Data: [olbauday/FPL-Core-Insights](https://github.com/olbauday/FPL-Core-Insights) CSVs (FPL API + Opta + ClubElo, 2×/day) + live FPL API overlay for prices + injuries.
+Data-driven agent. Picks + manages 15-player FPL squad. Pipeline: quantile-regression boosting for per-position point distributions; two-stage minutes head with cup-congestion rotation signal; independent Poisson for match goals; MILP for squad + XI + captain over rolling horizon; greedy + alt-solve chip scheduling. Data: [olbauday/FPL-Core-Insights](https://github.com/olbauday/FPL-Core-Insights) CSVs (FPL API + Opta + ClubElo + EFL/UEFA cup fixtures, 2×/day) + live FPL API overlay for prices + injuries.
 
 > **New to FPL?** See [FPL 101 primer](FPL_101.md).
 > **Scope:** Research / personal.
@@ -87,6 +87,19 @@ Standard Elo: expected from rating diff + HFA; update by K × MoV-multiplier × 
 
 **Points**: lagged minutes $m_{t-1,2,3}$ + 5/10-GW per-player rolling means (xG, xA, xGI, BPS, ICT, saves, CBI, tackles, recoveries) + six Opta from `playermatchstats.csv` (`oxg`, `oxa`, `occ`, `otob`, `osh`, `odrib`). Fixture ctx from match-feature join: `is_home`, `opp_xg_5`, `opp_xga_5`, `opp_elo`, `own_elo`, `elo_gap`. Set-piece + pen flags from playerstats. Rolling `total_points` excluded — feedback-loop risk; underlying xG/xA/ICT carry form signal cleanly.
 
+### 2.3 Cup congestion (minutes head)
+
+[src/features.py](../src/features.py) `_team_cup_congestion` + [src/data_loader.py](../src/data_loader.py) `_build_cup_fixtures`. Per-(team, event, season) count of non-PL cup matches within ±`CUP_WINDOW_DAYS` (= 3) of each PL kickoff. Sources: `EFL Cup`, `Champions League`, `Europa League`, `Conference League` from FPL-CI `By Tournament/<cup>/GW{n}/{fixtures,matches}.csv`. Foreign-club opponents dropped at remap — row stays tied to English side. Output → `data/cup_fixtures.csv`.
+
+| Col | Meaning |
+| --- | --- |
+| `cup_pre` | Cup matches in $[-W, 0)$ days (recent-fatigue rotation) |
+| `cup_post` | Cup matches in $[0, +W]$ days (upcoming-priority rotation) |
+| `cup_total` | `cup_pre + cup_post` |
+| `days_to_next_cup` | `min(positive delta_days)`; sentinel 999 when none |
+
+Pivoted to `own_*` via `is_home` at engine inference (refreshed per upcoming fixture, not stale historical row — see [src/fpl_engine.py](../src/fpl_engine.py) `_inference_rows`). Consumed by **minutes head only** — captures rotation signal (e.g. Chelsea resting EPL XI before UECL final) that pure lag-minutes can't anticipate before first benching. Points head doesn't see cup cols — rotation already mediated via reduced `mins_pred`.
+
 ---
 
 ## 3. Match Model
@@ -129,7 +142,7 @@ Independent quantile fits can cross. Row-sort predictions ascending at inference
 
 Per (i, t): one feature row per fixture player's club plays that GW (0/1/2). Predictions:
 
-1. **Scaled by availability** $a_{i,f}$ from two-stage minutes head ([src/train_minutes_model.py](../src/train_minutes_model.py)): `binary:logistic` $P(\text{plays})$ on full row set + `reg:logistic` $E[\text{mins}/90 \mid \text{plays}]$ on played-only subset. Combined $a = P(\text{plays}) \cdot E[\text{mins}/90 \mid \text{plays}]$. Engine multiplies $a$ onto q10/q50; bare $P(\text{plays})$ onto q90 (ceiling near-fully realised given player on pitch). DGW clip at 1. Next GW: FPL `chance_of_playing_next_round / 100` = hard upper bound; statuses `s`/`n`/`u` zero the row.
+1. **Scaled by availability** $a_{i,f}$ from two-stage minutes head ([src/train_minutes_model.py](../src/train_minutes_model.py)): `binary:logistic` $P(\text{plays})$ on full row set + `reg:logistic` $E[\text{mins}/90 \mid \text{plays}]$ on played-only subset. Combined $a = P(\text{plays}) \cdot E[\text{mins}/90 \mid \text{plays}]$. Feature subset = minutes-only superset of points cols (drops set-piece + per-action rolling — circular for predicting playing time) + cup-congestion §2.3. Engine multiplies $a$ onto q10/q50; bare $P(\text{plays})$ onto q90 (ceiling near-fully realised given player on pitch). DGW clip at 1. Next GW: FPL `chance_of_playing_next_round / 100` = hard upper bound; statuses `s`/`n`/`u` zero the row.
 2. **Aggregated** per (i, t): sum availability-weighted quantiles across fixtures. BGW → 0. DGW stacks additively.
 
 ### 4.4 Swanson mean + dispersion
@@ -156,7 +169,7 @@ Per-(pos, α) monotone non-param map at inference closes pinball/coverage gap on
 
 Affine fallback $a + b q_\text{pred}$, $b \in [0.1, 5.0]$, for cells with rows < `MIN_ROWS_ISOTONIC` (= 400). Slope floor preserves per-row ranking. Stored `{type: "affine", ab: [a, b]}`.
 
-```
+```json
 {pos_id: {q10|q50|q90: {type: "iso"|"affine", knots|ab: ...}}}
 ```
 
@@ -311,24 +324,29 @@ fpl-ml-manager/
 │   └── season_replay.py         # GW-by-GW chip-aware backtest
 ├── data/
 │   ├── players.csv, teams.csv, fixtures.csv, history.csv
+│   ├── cup_fixtures.csv                     # EFL/UCL/UEL/UECL congestion src
+│   ├── fixture_lambdas.csv                  # λ_h, λ_a, cs_{h,a}_p per fixture
+│   ├── season_replay.csv                    # Replay state (CI gate reads this)
 │   ├── .fpl_ci_cache/                       # raw per-GW snapshots
 │   ├── xgb_home_goals.json, xgb_away_goals.json
 │   ├── xgb_points_q{10,50,90}_p{1,2,3,4}.json
-│   ├── xgb_minutes.json
+│   ├── xgb_minutes_plays.json               # P(plays)
+│   ├── xgb_minutes_when_played.json         # E[mins/90 | plays]
 │   ├── xgb_bonus_q{10,50,90}.json
 │   ├── points_recalib.json
 │   ├── minutes_recalib.json
 │   ├── team_rho.json
 │   └── processed/
-│       ├── lineup.md            # Weekly report
-│       ├── squad_snapshot.csv   # Next-RHC state
-│       └── backtest/            # Preds + calib tables
+│       ├── lineup.md                    # Weekly human report
+│       ├── squad_snapshot.csv           # Next-RHC state (read by next run)
+│       ├── season_replay.md             # Chip-aware GW-by-GW human report
+│       └── backtest/                    # Preds + calib tables
 ├── docs/
 │   ├── README.md
 │   └── FPL_101.md
 └── .github/workflows/
-    ├── pipeline.yml             # 05:30 + 17:30 UTC daily
-    └── season_replay.yml        # workflow_dispatch
+    ├── pipeline.yml             # FPL Daily Update — 05:30 + 17:30 UTC daily
+    └── season_replay.yml        # Auto-fires on pipeline success + workflow_dispatch
 ```
 
 ---
@@ -378,6 +396,8 @@ python src/backtest.py --k 8 --minutes-recalib data/minutes_recalib.json
 ### Scheduled
 
 [.github/workflows/pipeline.yml](../.github/workflows/pipeline.yml) runs 2×/day 05:30 + 17:30 UTC, 30 min after FPL-CI refresh. Idempotent — commits only when artifacts change. `concurrency: fpl-update` prevents overlap.
+
+[.github/workflows/season_replay.yml](../.github/workflows/season_replay.yml) auto-fires on pipeline success (`workflow_run`). Detects newly fully-finished GW from `fixtures.csv` — replays only when a complete event lands since last run. Manual `workflow_dispatch` always runs. Separate `concurrency: fpl-replay` group so it doesn't race with pipeline pushes; commit step `pull --rebase` retries on reject.
 
 ---
 
