@@ -142,6 +142,13 @@ jobs:
         if: steps.gw.outputs.should_run == 'true'
         # Pipeline workflow uses a different concurrency group, so its push
         # can land between our checkout and push. Rebase-and-retry on reject.
+        # --autostash because the Refresh step (main.py) leaves other tracked
+        # files (history.csv, xgb_*.json, lineup.md, squad_snapshot.csv)
+        # modified in the working tree. Without --autostash, `git pull
+        # --rebase` aborts with "cannot pull with rebase: You have unstaged
+        # changes." Pipeline.yml owns those files; we stash, rebase, pop —
+        # if the pop conflicts on a pipeline-domain file the workflow fails
+        # loudly and we re-run after the pipeline lands.
         run: |
           set -e
           git config --global user.name "Replay Bot"
@@ -153,7 +160,7 @@ jobs:
           fi
           git commit -m "Season replay $(date -u +'%Y-%m-%d %H:%M UTC')"
           for i in 1 2 3 4 5; do
-            git pull --rebase origin main && git push && exit 0
+            git pull --rebase --autostash origin main && git push && exit 0
             echo "Push attempt $i failed; retrying after backoff."
             sleep $((i * 5))
           done
