@@ -9,7 +9,9 @@ import numpy as np
 import pandas as pd
 
 from data_loader import SEASON
-from features import build_match_features, build_player_features, points_feature_cols
+from features import (CUP_COLS, CUP_DEFAULTS, build_match_features,
+                      build_player_features, minutes_feature_cols,
+                      points_feature_cols)
 from train_bonus_model import load_bonus_models, predict_bonus_quantiles
 from train_minutes_model import load_minutes_model, predict_minutes
 from train_points_model import load_points_models, predict_quantiles
@@ -183,10 +185,13 @@ class FPLEngine:
             ("a", 0, "team_a", "h_xg_5", "h_xga_5", "elo_h_pre", "elo_a_pre",
              "lambda_a", "lambda_h", "cs_a_p"),
         )
+        keep_cols = list(dict.fromkeys(
+            cols + minutes_feature_cols() + ["player_id", "fixture_gw", "team_id"]
+        ))
         rows: list[dict[str, Any]] = []
 
         for _, fx in fx_up.iterrows():
-            for (_, home, team_col, opp_xg, opp_xga, opp_elo, own_elo,
+            for (side_tag, home, team_col, opp_xg, opp_xga, opp_elo, own_elo,
                  lam_for, lam_against, cs_p) in sides:
                 tid = int(fx[team_col])
                 for _, p in self.players[self.players["team"] == tid].iterrows():
@@ -210,8 +215,13 @@ class FPLEngine:
                         "player_id": pid, "fixture_gw": int(fx["event"]),
                         "team_id": tid,
                     })
-                    rows.append({k: r.get(k, 0.0) for k in
-                                 cols + ["player_id", "fixture_gw", "team_id"]})
+                    # Cup congestion: pivot fx own-side cup_* (refresh from upcoming
+                    # fixture, not stale historical row). Minutes head consumes.
+                    for c in CUP_COLS:
+                        src = f"{side_tag}_{c}"
+                        r[f"own_{c}"] = (float(fx[src]) if src in fx
+                                         else CUP_DEFAULTS[c])
+                    rows.append({k: r.get(k, 0.0) for k in keep_cols})
         return pd.DataFrame(rows)
 
     def build_projections(self, current_gw: int, horizon: int = 5,
