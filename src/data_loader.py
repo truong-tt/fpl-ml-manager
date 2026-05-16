@@ -65,6 +65,12 @@ OPTA_PM_COLS = {
     "successful_dribbles": "pm_drib",
 }
 
+# Cup tournaments — kept separate from PL fixtures. Used to derive congestion
+# features (rotation risk) for minutes head. Folder names per FPL-Core-Insights.
+CUP_TOURNAMENTS = [
+    "EFL Cup", "Champions League", "Europa League", "Conference League",
+]
+
 # FPL-CI uses position strings. FPL API contract uses element_type 1..4.
 POSITION_TO_ELEMENT_TYPE = {
     "Goalkeeper": 1, "GKP": 1, "GK": 1,
@@ -371,6 +377,61 @@ def _build_opta_per_gw_current(current_gw: int) -> pd.DataFrame:
     return agg
 
 
+def _build_cup_fixtures(
+    current_gw: int, max_gw: int, code_to_id: dict[int, int]
+) -> pd.DataFrame:
+    """Pull EFL Cup / UCL / UEL / UECL fixtures for current season.
+
+    Per memory `dataset_fpl_core_insights.md`: each cup folder
+    `By Tournament/<cup>/GW{n}/` contains fixtures.csv (upcoming) + matches.csv
+    (finished). GW{n} keys to the PL gameweek window — aligned with our `event`.
+    Non-PL tournaments only include English clubs' matches; opponent may be a
+    foreign club not in our teams.csv (drop in remap; keep raw code only).
+
+    Output one row per (English team, cup match): season, event, kickoff_time,
+    tournament, team_id, opponent_code, match_id. Future-window cup matches
+    (not yet played) come from fixtures.csv with finished=False.
+    """
+    rows: list[dict] = []
+    for tour in CUP_TOURNAMENTS:
+        for gw in range(1, max_gw + 1):
+            for fname in ("matches.csv", "fixtures.csv"):
+                rel = f"{SEASON}/By Tournament/{tour}/GW{gw}/{fname}"
+                df = _fetch_csv(rel, cache=(gw < current_gw))
+                if df is None or df.empty:
+                    continue
+                req = {"kickoff_time", "home_team", "away_team", "match_id"}
+                if not req.issubset(df.columns):
+                    continue
+                for _, r in df.iterrows():
+                    try:
+                        hcode = int(float(r["home_team"]))
+                        acode = int(float(r["away_team"]))
+                    except (ValueError, TypeError):
+                        continue
+                    for team_code, opp_code in ((hcode, acode), (acode, hcode)):
+                        team_id = code_to_id.get(team_code)
+                        if team_id is None:
+                            continue  # foreign club — skip; keeps row tied to English side only
+                        rows.append({
+                            "season": SEASON,
+                            "event": int(gw),
+                            "kickoff_time": r["kickoff_time"],
+                            "tournament": tour,
+                            "team_id": int(team_id),
+                            "opponent_code": int(opp_code),
+                            "match_id": r["match_id"],
+                        })
+    cols = ["season", "event", "kickoff_time", "tournament",
+            "team_id", "opponent_code", "match_id"]
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(rows)[cols]
+    # matches.csv + fixtures.csv may overlap (same fixture, after the match is
+    # played both can be present). Keep first (matches.csv → finished kickoff).
+    return out.drop_duplicates(subset=["match_id", "team_id"], keep="first")
+
+
 def _build_history_current(
     current_gw: int,
     players: pd.DataFrame,
@@ -619,13 +680,21 @@ def main() -> None:
                      "strength_defence_home", "strength_defence_away",
                      "elo", "code", "fotmob_name") if c in teams.columns]]
 
+    # Phase 4. Cup fixtures (current season only). Powers minutes-head
+    # congestion features (rotation risk for Chelsea / UCL clubs etc.).
+    cup_fixtures = _build_cup_fixtures(current_gw, max_gw, code_to_id)
+
     teams_out.to_csv(DATA_DIR / "teams.csv", index=False)
     players.to_csv(DATA_DIR / "players.csv", index=False)
     fixtures.to_csv(DATA_DIR / "fixtures.csv", index=False)
     history.to_csv(DATA_DIR / "history.csv", index=False)
+    cup_fixtures.to_csv(DATA_DIR / "cup_fixtures.csv", index=False)
     season_counts = history.groupby("season").size().to_dict() if not history.empty else {}
+    cup_counts = (cup_fixtures.groupby("tournament").size().to_dict()
+                  if not cup_fixtures.empty else {})
     print(f"[data_loader] wrote teams={len(teams_out)} players={len(players)} "
-          f"fixtures={len(fixtures)} history={len(history)} per-season={season_counts}")
+          f"fixtures={len(fixtures)} history={len(history)} per-season={season_counts} "
+          f"cup_fixtures={len(cup_fixtures)} per-cup={cup_counts}")
 
 
 if __name__ == "__main__":

@@ -85,10 +85,21 @@ def _filter_history(history: pd.DataFrame, season: str, before_gw: int) -> pd.Da
 
 
 def _last_finished_gw(fixtures: pd.DataFrame, season: str) -> int:
-    fx = fixtures[fixtures.get("season", season) == season]
-    fin = fx["finished"].astype(str).str.lower().isin(("true", "1"))
-    done = fx[fin]
-    return int(done["event"].max()) if not done.empty else 0
+    """Max event N where EVERY fixture row with event==N is finished.
+
+    Strict "fully-finished" rule. Handles DGW (>10 fixtures for one event) and
+    BGW (<10) naturally. Must match the GW detection in
+    .github/workflows/season_replay.yml — otherwise the workflow skips runs
+    forever because the CSV's last_replayed gets pinned to a partial GW that
+    the workflow never reaches with its stricter rule.
+    """
+    fx = fixtures[fixtures.get("season", season) == season].copy()
+    if fx.empty:
+        return 0
+    fx["fin"] = fx["finished"].astype(str).str.lower().isin(("true", "1"))
+    by_event = fx.groupby("event")["fin"].all()
+    done = by_event[by_event].index.astype(int)
+    return int(done.max()) if len(done) else 0
 
 
 def _one_gw_proj(proj: pd.DataFrame, gw: int) -> pd.DataFrame:

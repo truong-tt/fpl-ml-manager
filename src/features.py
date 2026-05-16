@@ -19,6 +19,12 @@ FIXTURE_LAMBDAS_FILE = Path(__file__).resolve().parent.parent / "data" / "fixtur
 LAMBDA_DEFAULT = 1.4
 CS_PROB_DEFAULT = 0.30
 
+# Cup fixtures (EFL Cup / UCL / UEL / UECL). Powers minutes-head congestion
+# features. Absent on cold start → all-zero congestion / sentinel days_to.
+CUP_FIXTURES_FILE = Path(__file__).resolve().parent.parent / "data" / "cup_fixtures.csv"
+CUP_WINDOW_DAYS = 3.0
+DAYS_TO_NEXT_CUP_SENTINEL = 999.0
+
 TEAM_WINDOWS = [3, 5, 10]
 # Used only when FPL-CI home_team_elo / away_team_elo absent or null.
 INIT_ELO, K, HFA = 1500.0, 20.0, 60.0
@@ -147,6 +153,81 @@ def _rolling_fixture_team_stats(fixtures: pd.DataFrame) -> pd.DataFrame:
     return long.groupby(["season", "team", "round"], as_index=False)[keep].mean()
 
 
+def _team_cup_congestion(fixtures: pd.DataFrame) -> pd.DataFrame:
+    """Per-(team, event, season) cup-congestion features.
+
+    Sources `data/cup_fixtures.csv` (built by data_loader from FPL-Core-Insights
+    By Tournament/ folders for EFL Cup / UCL / UEL / UECL). For each PL fixture
+    the team plays, count cup matches that team plays within ±CUP_WINDOW_DAYS
+    of the PL kickoff. Captures the rotation signal the minutes head currently
+    misses (e.g. Chelsea resting EPL XI before UECL final).
+
+    Cols:
+      cup_pre: cup matches in [-CUP_WINDOW_DAYS, 0) days (recent fatigue).
+      cup_post: cup matches in [0, +CUP_WINDOW_DAYS] days (upcoming priority).
+      cup_total: pre + post.
+      days_to_next_cup: min(positive delta_days) → sentinel if none.
+
+    Returns empty frame if cup_fixtures.csv absent (cold start). Wired into
+    build_match_features as `{h,a}_{col}`; build_player_features converts to
+    `own_{col}` via is_home pivot.
+    """
+    cols = ["team", "event", "season",
+            "cup_pre", "cup_post", "cup_total", "days_to_next_cup"]
+    if not CUP_FIXTURES_FILE.exists():
+        return pd.DataFrame(columns=cols)
+    cf = pd.read_csv(CUP_FIXTURES_FILE)
+    if cf.empty or "kickoff_time" not in cf.columns:
+        return pd.DataFrame(columns=cols)
+    cf = cf.rename(columns={"team_id": "team", "kickoff_time": "cup_kickoff"})
+    cf["cup_kickoff"] = pd.to_datetime(cf["cup_kickoff"], utc=True, errors="coerce")
+    cf = cf.dropna(subset=["cup_kickoff", "team"])
+
+    fx = _ensure_season(fixtures).copy()
+    if "kickoff_time" not in fx.columns:
+        return pd.DataFrame(columns=cols)
+    fx["kickoff_time"] = pd.to_datetime(fx["kickoff_time"], utc=True, errors="coerce")
+    fx = fx.dropna(subset=["kickoff_time"])
+
+    sides = []
+    for team_col in ("team_h", "team_a"):
+        d = fx[["event", "season", "kickoff_time", team_col]].rename(
+            columns={team_col: "team"})
+        sides.append(d)
+    long = pd.concat(sides, ignore_index=True)
+
+    j = long.merge(cf[["team", "season", "cup_kickoff"]],
+                   on=["team", "season"], how="left")
+    j["delta_days"] = (
+        (j["cup_kickoff"] - j["kickoff_time"]).dt.total_seconds() / 86400.0
+    )
+    in_win = j["delta_days"].abs() <= CUP_WINDOW_DAYS
+    j["pre"] = (in_win & (j["delta_days"] < 0)).astype(int)
+    j["post"] = (in_win & (j["delta_days"] >= 0)).astype(int)
+
+    agg = (j.groupby(["team", "event", "season"], as_index=False)
+            .agg(cup_pre=("pre", "sum"), cup_post=("post", "sum")))
+    agg["cup_total"] = agg["cup_pre"] + agg["cup_post"]
+
+    pos = j.loc[j["delta_days"] >= 0].copy()
+    if pos.empty:
+        agg["days_to_next_cup"] = DAYS_TO_NEXT_CUP_SENTINEL
+    else:
+        nxt = (pos.groupby(["team", "event", "season"], as_index=False)["delta_days"]
+                  .min().rename(columns={"delta_days": "days_to_next_cup"}))
+        agg = agg.merge(nxt, on=["team", "event", "season"], how="left")
+        agg["days_to_next_cup"] = agg["days_to_next_cup"].fillna(
+            DAYS_TO_NEXT_CUP_SENTINEL)
+    return agg[cols]
+
+
+CUP_COLS = ("cup_pre", "cup_post", "cup_total", "days_to_next_cup")
+CUP_DEFAULTS = {
+    "cup_pre": 0.0, "cup_post": 0.0, "cup_total": 0.0,
+    "days_to_next_cup": DAYS_TO_NEXT_CUP_SENTINEL,
+}
+
+
 def build_match_features(
     fixtures: pd.DataFrame, history: pd.DataFrame, teams: pd.DataFrame
 ) -> pd.DataFrame:
@@ -181,6 +262,18 @@ def build_match_features(
             fx[f"{side}_{c}_{OPTA_WINDOW}"] = (
                 m[f"roll_{c}_{OPTA_WINDOW}"].fillna(OPTA_DEFAULTS.get(c, 1.0)).values
             )
+
+    cc = _team_cup_congestion(fixtures)
+    for side, team_col in (("h", "team_h"), ("a", "team_a")):
+        if cc.empty:
+            for c in CUP_COLS:
+                fx[f"{side}_{c}"] = CUP_DEFAULTS[c]
+            continue
+        m = fx.merge(cc, left_on=[team_col, "event", "season"],
+                     right_on=["team", "event", "season"],
+                     how="left", suffixes=("", "_cc"))
+        for c in CUP_COLS:
+            fx[f"{side}_{c}"] = m[c].fillna(CUP_DEFAULTS[c]).values
 
     fx["elo_diff"] = fx["elo_h_pre"] - fx["elo_a_pre"]
     fx["xg_diff_5"] = fx["h_xg_5"] - fx["a_xg_5"]
@@ -281,11 +374,12 @@ def build_player_features(
         stakes_side_cols += [f"{s}_rank", f"{s}_ppg", f"{s}_in_drop_zone"]
         stakes_side_cols += [f"{s}_pts_to_title_norm", f"{s}_pts_to_top4_norm",
                               f"{s}_pts_to_top6_norm", f"{s}_pts_to_safety_norm"]
+    cup_side_cols = [f"{s}_{c}" for s in ("h", "a") for c in CUP_COLS]
     fx_take = ["id", "event", "team_h", "team_a",
                "h_xg_5", "a_xg_5", "h_xga_5", "a_xga_5",
                "elo_h_pre", "elo_a_pre",
                "lambda_h", "lambda_a", "cs_h_p", "cs_a_p",
-               "gws_remaining"] + stakes_side_cols
+               "gws_remaining"] + stakes_side_cols + cup_side_cols
     fx_take = [c for c in fx_take if c in fixture_feats.columns]
     fx = fixture_feats[fx_take].rename(columns={"id": "fixture"})
     df = df.merge(fx, on="fixture", how="left")
@@ -321,6 +415,21 @@ def build_player_features(
     if "gws_remaining" not in df.columns:
         df["gws_remaining"] = 0.0
     df["gws_remaining"] = df["gws_remaining"].fillna(0.0).astype(float)
+
+    # Cup congestion: pivot h_/a_ → own_/opp_ via is_home. own_cup_total >> 0
+    # = rotation likely (Euro tie / cup final close to PL kickoff). opp_cup_*
+    # exposed for symmetry; minutes head consumes own_* only.
+    for c in CUP_COLS:
+        h_col, a_col = f"h_{c}", f"a_{c}"
+        default = CUP_DEFAULTS[c]
+        if h_col not in df.columns or a_col not in df.columns:
+            df[f"own_{c}"] = default
+            df[f"opp_{c}"] = default
+            continue
+        df[h_col] = df[h_col].fillna(default).astype(float)
+        df[a_col] = df[a_col].fillna(default).astype(float)
+        df[f"own_{c}"] = np.where(df["is_home"] == 1, df[h_col], df[a_col]).astype(float)
+        df[f"opp_{c}"] = np.where(df["is_home"] == 1, df[a_col], df[h_col]).astype(float)
     # target = total_points - bonus. Bonus head adds back at engine w/ BONUS_BLEND=1.0.
     # Removes double-count (points head learning partial bonus + bonus head adding it).
     bonus = pd.to_numeric(df.get("bonus", 0.0), errors="coerce").fillna(0.0).astype(float)
@@ -349,10 +458,17 @@ def minutes_feature_cols() -> list[str]:
     Drop set-piece flags + per-action rolling (cbi/tkl/saves). Strong correlation
     with playing time but circular for predicting it. Keep lag/roll minutes,
     form proxies (xg/xa/ict), pos, fixture-side context.
+
+    Cup-congestion cols (own_cup_pre/post/total, own_days_to_next_cup) feed
+    rotation signal: team facing a near-term cup tie tends to rest XI in EPL.
+    Lacking before — minutes head couldn't anticipate Chelsea UECL-final
+    rotation in advance (only saw lag minutes after the first benching).
     """
     return ["pos_1", "pos_2", "pos_3", "pos_4",
             "is_home",
             "lag1_min", "lag2_min", "lag3_min",
             "roll5_xg", "roll5_xa", "roll5_xgi", "roll5_ict",
             "roll10_xg", "roll10_xa", "roll10_xgi", "roll10_ict",
-            "own_elo", "opp_elo", "elo_gap"]
+            "own_elo", "opp_elo", "elo_gap",
+            "own_cup_pre", "own_cup_post", "own_cup_total",
+            "own_days_to_next_cup"]

@@ -100,7 +100,10 @@ jobs:
               last_replayed = 0
 
           force = os.environ.get("FORCE", "false").lower() == "true"
-          should_run = force or (last_fin > 0 and last_fin > last_replayed)
+          # Manual dispatch always runs — user explicitly clicked Run, the
+          # auto-skip gate is for workflow_run only.
+          manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+          should_run = force or manual or (last_fin > 0 and last_fin > last_replayed)
 
           print(f"season={season} last_fin={last_fin} last_replayed={last_replayed} force={force} should_run={should_run}")
 
