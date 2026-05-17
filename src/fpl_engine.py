@@ -64,6 +64,50 @@ def _row_quantile_to_moments(q10: np.ndarray, q50: np.ndarray, q90: np.ndarray
     return mu, sd
 
 
+def _mixture_quantile(q10_played: np.ndarray, q50_played: np.ndarray,
+                      q90_played: np.ndarray, p: np.ndarray,
+                      alpha: float) -> np.ndarray:
+    """Unconditional alpha-quantile under zero-inflated mixture.
+
+    Distribution: with prob (1-p) the outcome is 0 (DNP); with prob p the
+    outcome is drawn from F_played. CDF:
+
+        F_unc(y) = (1-p) * 1[y >= 0] + p * F_played(y)
+
+    Inversion at level alpha:
+
+        q_alpha_unc = 0                              if alpha <= 1 - p
+                    = F_played^{-1}((alpha - (1-p))/p)   otherwise
+
+    F_played^{-1} approximated by piecewise-linear interpolation through the
+    known 3-knot grid (0.1, q10_played), (0.5, q50_played), (0.9, q90_played);
+    clamped to [q10, q90] outside [0.1, 0.9]. Same routine for points + bonus
+    heads -- both trained on minutes > 0 so their predicted quantiles ARE
+    F_played quantiles, not unconditional.
+
+    Replaces the prior `q_alpha * p` heuristic, which is the right operation
+    for E[X] (linearity) but not for q_alpha (no analogous identity). The old
+    rule under-counted ceiling for high-rotation high-ceiling profiles and
+    over-counted floor for the same (q10 > 0 even when alpha < 1-p).
+    """
+    p = np.asarray(p, dtype=float)
+    p_safe = np.clip(p, 1e-9, 1.0)
+    threshold = 1.0 - p_safe                 # mass at zero
+    mask_zero = alpha <= threshold
+    alpha_played = np.clip((alpha - threshold) / p_safe, 0.0, 1.0)
+    q_played = np.where(
+        alpha_played <= 0.1,
+        q10_played,
+        np.where(
+            alpha_played <= 0.5,
+            q10_played + (alpha_played - 0.1) / 0.4 * (q50_played - q10_played),
+            q50_played + (alpha_played - 0.5) / 0.4 * (q90_played - q50_played),
+        ),
+    )
+    q_played = np.minimum(np.maximum(q_played, q10_played), q90_played)
+    return np.where(mask_zero, 0.0, q_played)
+
+
 def _joint_mc_aggregate(rows: pd.DataFrame, n_samples: int = MC_SAMPLES,
                         team_rho: float = MC_TEAM_RHO,
                         seed: int = 17) -> pd.DataFrame:
@@ -310,15 +354,22 @@ class FPLEngine:
         mins_pred.loc[bad_mask] = 0.0
         rows["chance"] = mins_pred.values
         rows["plays"] = plays.values
-        rows["q10"] = rows["q10"] * rows["chance"]
-        rows["q50"] = rows["q50"] * rows["chance"]
-        rows["q90"] = rows["q90"] * rows["plays"]
-        # Bonus is conditional on minutes (DNP = 0 bonus). Scale on same
-        # plays/chance schedule as points so the combined-quantile downstream
-        # respects the minutes mixture too.
-        rows["q10_b"] = rows["q10_b"] * rows["chance"]
-        rows["q50_b"] = rows["q50_b"] * rows["chance"]
-        rows["q90_b"] = rows["q90_b"] * rows["plays"]
+        # Zero-inflated mixture quantile transform. Both heads trained on
+        # minutes > 0, so their q10/q50/q90 are F_played quantiles. Compose
+        # with P(plays) = `plays` via _mixture_quantile to get unconditional
+        # quantiles. This replaces the old q*p heuristic which was correct
+        # only for the mean (linearity of expectation) and wrong for arbitrary
+        # quantiles. Same probability `plays` applied to points + bonus since
+        # bonus is conditional on the same event (any appearance, BPS earned).
+        p_vec = rows["plays"].values
+        for prefix in ("", "_b"):
+            q10_col, q50_col, q90_col = f"q10{prefix}", f"q50{prefix}", f"q90{prefix}"
+            q10v = rows[q10_col].values.astype(float)
+            q50v = rows[q50_col].values.astype(float)
+            q90v = rows[q90_col].values.astype(float)
+            rows[q10_col] = _mixture_quantile(q10v, q50v, q90v, p_vec, 0.10)
+            rows[q50_col] = _mixture_quantile(q10v, q50v, q90v, p_vec, 0.50)
+            rows[q90_col] = _mixture_quantile(q10v, q50v, q90v, p_vec, 0.90)
 
         if mc_samples and mc_samples > 0:
             mc = _joint_mc_aggregate(rows, n_samples=mc_samples, team_rho=team_rho)
