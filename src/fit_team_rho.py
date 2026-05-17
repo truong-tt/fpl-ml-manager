@@ -16,10 +16,10 @@ Outputs `data/team_rho.json`:
       }
     }
 
-The position-pair breakdown is informational only — the engine still uses a
-single scalar shock per (team, GW) per draw. A position-pair Cholesky
-decomposition would be the next step (worth wiring once we trust the per-pair
-estimates on a larger sample).
+The position-pair breakdown is consumed by `fpl_engine._load_team_corr_matrix`:
+diag = same-position correlation, off-diag = cross-position correlation, PSD-
+repaired (eigen-clip) before Cholesky. `rho_global` remains the scalar fallback
+used when this JSON is absent.
 
 CLI:
     python src/fit_team_rho.py

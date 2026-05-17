@@ -200,11 +200,17 @@ so $q_{\alpha,c} = \mu_c + z_\alpha\,\sigma_c$ under the Gaussian envelope alrea
 
 ### 4.9 Joint MC aggregation
 
-[src/fpl_engine.py](../src/fpl_engine.py) `_joint_mc_aggregate`. Per-row moments arrive already combined per §4.8 — points + bonus folded into $(\mu, \sigma)$ via variance-additive independence — and already conditioned to the unconditional distribution per §4.3. The sampler then layers a per-(team, GW) shared shock $\eta \sim \mathcal{N}(0,1)$ on top of per-row idiosyncratic $\varepsilon$, blended via team-correlation $\rho$. Captures within-club covariance (Liverpool CS lifts Virgil + Salah together) without re-introducing the bias-prone linear quantile sum.
+[src/fpl_engine.py](../src/fpl_engine.py) `_joint_mc_aggregate`. Per-row moments arrive already combined per §4.8 — points + bonus folded into $(\mu, \sigma)$ via variance-additive independence — and already conditioned to the unconditional distribution per §4.3. The sampler layers a per-(team, GW) **position-factor vector** $f \sim \mathcal{N}(0, C)$ on top of per-row idiosyncratic $\varepsilon$, where $C \in \mathbb{R}^{4 \times 4}$ is the within-team position correlation matrix from `data/team_rho.json::by_pos_pair`. Captures within-club covariance (Liverpool CS lifts Virgil + Salah together; goal blitz lifts Salah + Diaz) with per-position asymmetry — GK-DEF/DEF-DEF share most of the signal, FWD-FWD almost none.
 
-`MC_TEAM_RHO` from `data/team_rho.json` ([src/fit_team_rho.py](../src/fit_team_rho.py); fallback 0.4). `MC_SAMPLES = 800`. Per (i, t): sum draw-level pts across DGW fixtures within draw, take sample mean (μ), std (s), 90th-quantile (`cap_xp`). $\rho = 0$ → diagonal aggregation.
+**Cholesky factor model.** Build a 4×4 PSD matrix $C$ (diag = same-position ρ, off-diag = cross-position ρ; missing entries fall back to global ρ; negative diagonals — e.g. empirical 4-4 ≈ -0.11 on small n — clipped to 0; eigen-clip floor 1e-6 to guarantee PSD). Cholesky $C = L L^\top$. Per (team, GW): draw $z \sim \mathcal{N}(0, I_4)$, set $f = Lz$. A row at position $p$ takes its team-correlated component as $\sigma_i \cdot f_{p}$; the idiosyncratic remainder $\sigma_i \sqrt{1 - C_{p,p}} \, \varepsilon_i$ restores $\mathrm{Var}(X_i) = \sigma_i^2$. The induced covariance is
 
-**Empirical fit**: standardised residuals $z = (y - \mu) / s$ from points + bonus heads, paired same-team-same-GW, Pearson. `team_rho.json` stores global ρ + position-pair breakdown (informational; engine applies single scalar shock per (team, GW) per draw pending Cholesky upgrade).
+$$\mathrm{Cov}(X_i, X_j \mid \text{same team, GW}) = \sigma_i \sigma_j \cdot C_{p_i, p_j}$$
+
+exactly — i.e. recovers the empirical position-pair correlation directly. The earlier scalar-ρ formulation induced $\sigma_i \sigma_j \rho^2$ (variance-explained, not correlation), an under-statement of within-club covariance and unable to distinguish GK-DEF ($C_{1,2} \approx 0.23$) from FWD-FWD ($C_{4,4} \approx 0$). Smoke test confirms reproduction to $\sim 10^{-4}$ on 20k Monte-Carlo draws. Legacy scalar path retained as a fallback (`team_corr=None`) when `team_rho.json` is absent.
+
+`MC_TEAM_CORR = (C, L)` loaded by `_load_team_corr_matrix` at module import. Scalar fallback `MC_TEAM_RHO` from `rho_global` (default 0.4). `MC_SAMPLES = 800`. Per (i, t): sum draw-level pts across DGW fixtures within draw, take sample mean (μ), std (s), 90th-quantile (`cap_xp`).
+
+**Empirical fit**: standardised residuals $z = (y - \mu) / s$ from points + bonus heads, paired same-team-same-GW, Pearson. `team_rho.json` stores global ρ + position-pair breakdown — both now consumed by the engine (matrix path is the default; scalar `rho_global` remains the fallback path when the JSON is missing).
 
 ---
 
@@ -416,9 +422,8 @@ python src/backtest.py --k 8 --minutes-recalib data/minutes_recalib.json
 2. **MIQP risk** — replace diagonal linear $-\nu s$ penalty with full quadratic $x^\top \Sigma x$. Σ obtainable from MC sample draws once exported pairwise. Requires Gurobi/CPLEX/SCIP — CBC is LP-only.
 3. **Result-distribution head** — model W/D/L probs from joint Poisson PMF (with Dixon–Coles τ correction). Would give DEF/GK heads a structural CS-correlated signal beyond marginal `cs_h_p`.
 4. **Regime breaks** — embedding-based detection of new-manager / new-set-piece-taker invalidating rolling features. EMA halflife smooths but doesn't reset.
-5. **Cholesky team correlation** — `team_rho.json` already stores position-pair breakdown; engine currently applies single scalar shock per (team, GW). Per-position factor decomposition would unlock GK-DEF vs FWD-FWD asymmetry.
-6. **Learned chip scheduler** — joint MILP extension. Chip-EV path-dependent on transfer plan + DGW timing; greedy post-processing in [src/chips.py](../src/chips.py) misses interactions.
-7. **Strict walk-forward replay** — `season_replay.py` reuses production heads (trained on full season → mild parameter leakage). Per-GW retrain on `round < G` would yield honest out-of-sample. Cost ~30 sec/GW × 36 ≈ 18 min/run.
+5. **Learned chip scheduler** — joint MILP extension. Chip-EV path-dependent on transfer plan + DGW timing; greedy post-processing in [src/chips.py](../src/chips.py) misses interactions.
+6. **Strict walk-forward replay** — `season_replay.py` reuses production heads (trained on full season → mild parameter leakage). Per-GW retrain on `round < G` would yield honest out-of-sample. Cost ~30 sec/GW × 36 ≈ 18 min/run.
 
 ---
 

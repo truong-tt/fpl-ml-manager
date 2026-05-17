@@ -23,10 +23,22 @@ from train_points_model import load_points_models, predict_quantiles
 # contribution to both expected value and dispersion uniformly.
 BONUS_BLEND = 1.0
 
-# Joint MC aggregation. Per-(team, GW) shock + per-row idiosyncratic. Shock-
-# correlated fraction = MC_TEAM_RHO; rest idiosyncratic. Rho=0 → independence
-# (matches prior diagonal aggregation). Rho>0 captures within-club covariance:
-# clean sheet correlates DEF + GK upside; strong attack correlates MID + FWD.
+# Joint MC aggregation. Per-(team, GW) shock + per-row idiosyncratic.
+#
+# Two correlation models:
+#   1. Scalar MC_TEAM_RHO — legacy single ρ applied uniformly across positions.
+#      Cov(X_i, X_j | same team, GW) = ρ · σ_i · σ_j. Used as fallback when
+#      the position-pair matrix is absent.
+#   2. 4×4 within-team position-pair correlation matrix C — diag = same-pos
+#      correlation, off-diag = cross-pos correlation, both from
+#      `data/team_rho.json::by_pos_pair` (`fit_team_rho.py`). Decomposed via
+#      Cholesky C = L L^T. Per (team, GW) we draw a 4-dim factor f = L z,
+#      z ~ N(0, I_4); a row at position p uses f[p-1] as its team-correlated
+#      component. Idiosyncratic remainder σ · √(1 − C[p,p]) ε keeps Var(X_i)
+#      = σ_i^2. Recovers Cov(X_i, X_j) = σ_i σ_j · C[p_i, p_j] exactly — the
+#      scalar path's σ_i σ_j ρ^2 (variance-explained, not correlation) is an
+#      under-estimate. Unlocks GK-DEF/2-2 (~0.15–0.23 empirically) vs. 3-3
+#      (~0.01) and 4-4 (small, sometimes negative — clipped to 0).
 MC_SAMPLES = 800
 MC_TEAM_RHO_FALLBACK = 0.4
 _TEAM_RHO_PATH = Path(__file__).resolve().parent.parent / "data" / "team_rho.json"
@@ -47,7 +59,63 @@ def _load_team_rho_default() -> float:
         return MC_TEAM_RHO_FALLBACK
 
 
+def _load_team_corr_matrix() -> tuple[np.ndarray, np.ndarray] | None:
+    """Build a 4×4 within-team position correlation matrix C (and its Cholesky
+    factor L) from `data/team_rho.json::by_pos_pair`. Returns None on missing /
+    malformed file so the engine falls back to the scalar path.
+
+    Diag C[p,p] = same-position correlation (e.g. 2-2 for two DEFs same team
+    same GW). Off-diag C[p,q] = cross-position correlation. Missing same-pos
+    entries (rare — 1-1 absent because only one GK plays per match) fall back
+    to rho_global. Negative diagonals (4-4 sometimes flips signs on small n)
+    are clipped to 0 — the factor model needs Var(f_p) ≥ 0.
+
+    PSD repair: eigen-clip to a small floor (1e-6) so Cholesky succeeds. The
+    empirical matrix can be indefinite due to sampling noise + clipping.
+    """
+    if not _TEAM_RHO_PATH.exists():
+        return None
+    try:
+        d = json.loads(_TEAM_RHO_PATH.read_text(encoding="utf-8"))
+    except (ValueError, OSError, TypeError):
+        return None
+    by_pair = d.get("by_pos_pair") or {}
+    if not by_pair:
+        return None
+    rho_g = float(np.clip(d.get("rho_global", 0.0), 0.0, 0.9))
+    C = np.full((4, 4), rho_g, dtype=float)
+    for k, v in by_pair.items():
+        try:
+            p1_s, p2_s = k.split("-")
+            p1, p2 = int(p1_s), int(p2_s)
+            r = float(v["rho"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        if not (1 <= p1 <= 4 and 1 <= p2 <= 4):
+            continue
+        C[p1 - 1, p2 - 1] = r
+        C[p2 - 1, p1 - 1] = r
+    for i in range(4):
+        # Diagonal must be non-negative (variance of factor) and bounded by 1
+        # (correlation upper bound). 4-4 empirical can be negative due to
+        # within-team forward substitution dynamics on small n.
+        C[i, i] = float(np.clip(C[i, i], 0.0, 1.0))
+    # PSD repair via eigenvalue clipping. The empirical matrix is sample-
+    # estimated + diag-clipped → can drift slightly indefinite. Clip negative
+    # eigvals to a small floor, re-symmetrise.
+    w, V = np.linalg.eigh(C)
+    w = np.clip(w, 1e-6, None)
+    C_psd = (V * w) @ V.T
+    C_psd = (C_psd + C_psd.T) / 2.0
+    try:
+        L = np.linalg.cholesky(C_psd + 1e-9 * np.eye(4))
+    except np.linalg.LinAlgError:
+        return None
+    return C_psd, L
+
+
 MC_TEAM_RHO = _load_team_rho_default()
+MC_TEAM_CORR = _load_team_corr_matrix()
 
 
 # Swanson / Keefer-Bodily 3-point estimator weights. Calibrated to skewed
@@ -110,12 +178,24 @@ def _mixture_quantile(q10_played: np.ndarray, q50_played: np.ndarray,
 
 def _joint_mc_aggregate(rows: pd.DataFrame, n_samples: int = MC_SAMPLES,
                         team_rho: float = MC_TEAM_RHO,
+                        team_corr: tuple[np.ndarray, np.ndarray] | None
+                        = MC_TEAM_CORR,
                         seed: int = 17) -> pd.DataFrame:
     """Sample correlated player totals per (player, fixture_gw).
 
     Same (team_id, fixture_gw) rows share team-shock per draw — Liverpool CS
     shock lifts Salah + Virgil together; goal blitz lifts Salah + Diaz.
     Idiosyncratic remainder keeps individual upside unrolled.
+
+    Correlation models (see module-level note):
+      * `team_corr=(C, L)` — 4×4 position-pair Cholesky path. Per (team, GW)
+        draw a 4-dim factor f = L z; row at position p picks f[p-1]. Idio
+        scale = √(1 − C[p,p]) so total per-row variance stays σ_i^2 and
+        Cov(X_i, X_j | same team, GW) = σ_i σ_j · C[p_i, p_j].
+      * `team_corr=None` — scalar legacy path. Single shared η per (team, GW)
+        scaled by ρ; idio scale = √(1 − ρ²). Recovers σ_i σ_j · ρ² covariance
+        (NB this is variance-explained, not correlation; the matrix path
+        recovers the empirical correlation directly).
 
     Points + bonus heads combine via independence-assumption variance addition
     on the (mu, sigma) plane rather than linear quantile addition. Quantile
@@ -157,14 +237,30 @@ def _joint_mc_aggregate(rows: pd.DataFrame, n_samples: int = MC_SAMPLES,
     n_shocks = len(uniq)
     shock_idx = np.array([uniq[k] for k in keys], dtype=np.int32)
 
-    # (n_samples, n_shocks) team shocks; (n_samples, n) idiosyncratic eps.
-    eta = rng.standard_normal((n_samples, n_shocks))
     eps = rng.standard_normal((n_samples, n))
-
     sd_b = sd[None, :]
-    rho = float(np.clip(team_rho, 0.0, 1.0))
-    correlated = rho * sd_b * eta[:, shock_idx]
-    idiosync = np.sqrt(max(1.0 - rho * rho, 0.0)) * sd_b * eps
+
+    if team_corr is not None:
+        # Cholesky path. Per (team, GW) factor f = L z, z ~ N(0, I_4).
+        # Row at pos p picks f[p-1] as team-correlated component; idio
+        # scale √(1 − C[p,p]) keeps total Var(X_i) = σ_i^2.
+        C, L = team_corr
+        # pos_id derived from one-hot dummies in inference rows.
+        pos_dummies = rows[["pos_1", "pos_2", "pos_3", "pos_4"]].values
+        pos = pos_dummies.argmax(axis=1)            # 0..3
+        z = rng.standard_normal((n_samples, n_shocks, 4))
+        f = z @ L.T                                 # (S, K, 4)
+        # Index per-row team-correlated factor: f_row[s, i] = f[s, shock_idx[i], pos[i]]
+        f_row = f[:, shock_idx, pos]                # (S, n)
+        diag_C = np.diag(C)[pos]                    # (n,)
+        idio_scale = np.sqrt(np.clip(1.0 - diag_C, 0.0, 1.0))[None, :]
+        correlated = sd_b * f_row
+        idiosync = sd_b * idio_scale * eps
+    else:
+        eta = rng.standard_normal((n_samples, n_shocks))
+        rho = float(np.clip(team_rho, 0.0, 1.0))
+        correlated = rho * sd_b * eta[:, shock_idx]
+        idiosync = np.sqrt(max(1.0 - rho * rho, 0.0)) * sd_b * eps
     draws = mu[None, :] + correlated + idiosync  # (n_samples, n)
 
     # Aggregate per (player_id, fixture_gw). DGW = same player, same GW, two
@@ -289,11 +385,16 @@ class FPLEngine:
 
     def build_projections(self, current_gw: int, horizon: int = 5,
                           mc_samples: int = MC_SAMPLES,
-                          team_rho: float = MC_TEAM_RHO) -> pd.DataFrame:
+                          team_rho: float = MC_TEAM_RHO,
+                          team_corr: tuple[np.ndarray, np.ndarray] | None
+                          = MC_TEAM_CORR) -> pd.DataFrame:
         """Wide df. xp_t / var_t / cap_xp_t per player + convenience totals.
 
         mc_samples > 0 → joint MC aggregation (within-club correlation via
         shared team shocks per draw). mc_samples=0 → deterministic Pearson-Tukey.
+        `team_corr=(C, L)` enables the per-position Cholesky path (default when
+        `data/team_rho.json::by_pos_pair` is loadable). Pass `team_corr=None`
+        to force the legacy scalar `team_rho` path.
         """
         if self.points_models is None:
             return pd.DataFrame()
@@ -372,7 +473,8 @@ class FPLEngine:
             rows[q90_col] = _mixture_quantile(q10v, q50v, q90v, p_vec, 0.90)
 
         if mc_samples and mc_samples > 0:
-            mc = _joint_mc_aggregate(rows, n_samples=mc_samples, team_rho=team_rho)
+            mc = _joint_mc_aggregate(rows, n_samples=mc_samples,
+                                     team_rho=team_rho, team_corr=team_corr)
             mc = mc.rename(columns={"std_xp": "variance"})
             agg = mc[["player_id", "fixture_gw", "mean_xp", "variance", "cap_xp"]]
         else:
