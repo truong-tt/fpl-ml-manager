@@ -32,13 +32,10 @@
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Tarkowski | Gyökeres |
-| Haaland | Gabriel |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW37 — Gyökeres (+7.1 pts)
 - **Bench Boost:** GW38 (+17.3 pts)
-- **Wildcard:** hold (2 suggested transfers, 0 hits)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
