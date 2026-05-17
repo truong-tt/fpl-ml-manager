@@ -1,41 +1,44 @@
-# GW37 Lineup
+# GW38 Lineup
 
-- **Bank:** £4.3m
+- **Bank:** £4.2m
 - **Hits:** 0
-- **Squad Value:** £95.7m
-- **XI Expected Points (incl. captain):** 57.8
+- **Squad Value:** £95.8m
+- **XI Expected Points (incl. captain):** 58.9
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Lammens | MUN | GK | 5.1 | 6.5 | 10.19 |  |
-| Gabriel | ARS | DEF | 7.3 | 5.43 | 9.82 |  |
-| Cucurella | CHE | DEF | 6.1 | 4.13 | 9.42 |  |
-| Botman | NEW | DEF | 4.9 | 4.41 | 10.34 |  |
-| Thiaw | NEW | DEF | 4.9 | 4.44 | 10.24 |  |
-| Casemiro | MUN | MID | 5.9 | 3.72 | 6.36 |  |
-| B.Fernandes | MUN | MID | 10.4 | 5.48 | 9.96 | (VC) |
-| O.Dango | BRE | MID | 5.6 | 3.69 | 5.76 |  |
-| Thiago | BRE | FWD | 7.3 | 4.77 | 7.43 |  |
-| Gyökeres | ARS | FWD | 9.1 | 11.04 | 9.63 | (C) |
-| Bowen | WHU | FWD | 7.7 | 4.2 | 8.65 |  |
+| Pope | NEW | GK | 5.0 | 5.1 | 5.1 |  |
+| Cucurella | CHE | DEF | 6.1 | 5.16 | 5.16 |  |
+| Virgil | LIV | DEF | 6.0 | 5.61 | 5.61 |  |
+| Gusto | CHE | DEF | 4.8 | 4.9 | 4.9 |  |
+| Thiaw | NEW | DEF | 4.9 | 6.1 | 6.1 |  |
+| Botman | NEW | DEF | 4.9 | 6.07 | 6.07 |  |
+| Szoboszlai | LIV | MID | 7.0 | 9.35 | 4.68 | (C) |
+| Ndiaye | EVE | MID | 6.3 | 3.5 | 3.5 |  |
+| B.Fernandes | MUN | MID | 10.4 | 4.64 | 4.64 | (VC) |
+| Gyökeres | ARS | FWD | 9.1 | 4.03 | 4.03 |  |
+| Bowen | WHU | FWD | 7.7 | 4.39 | 4.39 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Pope | NEW | GK | 5.0 | 3.37 | 8.48 |  |
-| Gusto | CHE | DEF | 4.8 | 3.66 | 8.59 |  |
-| Dewsbury-Hall | EVE | MID | 5.3 | 3.49 | 7.12 |  |
-| Ndiaye | EVE | MID | 6.3 | 3.48 | 7.13 |  |
+| Lammens | MUN | GK | 5.1 | 2.78 | 2.78 |  |
+| Dewsbury-Hall | EVE | MID | 5.3 | 3.45 | 3.45 |  |
+| Casemiro | MUN | MID | 5.9 | 2.54 | 2.54 |  |
+| Thiago | BRE | FWD | 7.3 | 2.65 | 2.65 |  |
 
 ## Transfers
 
-_Hold — no transfer beats a 4-pt hit._
+| Out | In |
+| --- | --- |
+| O.Dango | Szoboszlai |
+| Gabriel | Virgil |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW37 — Gyökeres (+7.1 pts)
-- **Bench Boost:** GW38 (+17.3 pts)
-- **Wildcard:** hold (0 suggested transfers, 0 hits)
+- **Triple Captain:** GW38 — Szoboszlai (+5.8 pts)
+- **Bench Boost:** GW38 (+11.4 pts)
+- **Wildcard:** hold (2 suggested transfers, 0 hits)
