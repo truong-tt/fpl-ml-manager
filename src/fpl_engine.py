@@ -16,9 +16,11 @@ from train_bonus_model import load_bonus_models, predict_bonus_quantiles
 from train_minutes_model import load_minutes_model, predict_minutes
 from train_points_model import load_points_models, predict_quantiles
 
-# Bonus blend factor. 1.0 = full additivity. Points head now trained on
-# `total_points - bonus` (target excludes bonus), bonus head adds back. Clean
-# decomposition. Pre-fix used 0.5 damp + total_points target → double-count.
+# Bonus blend factor. Applied at the MOMENT level (mu_b *= b, sigma_b *= b)
+# before variance-additive combine with the points head — not as a quantile
+# multiplier. Points head is trained on `total_points - bonus`; the bonus head
+# fills the missing component. 1.0 = full inclusion. <1 damps the bonus
+# contribution to both expected value and dispersion uniformly.
 BONUS_BLEND = 1.0
 
 # Joint MC aggregation. Per-(team, GW) shock + per-row idiosyncratic. Shock-
@@ -71,6 +73,14 @@ def _joint_mc_aggregate(rows: pd.DataFrame, n_samples: int = MC_SAMPLES,
     shock lifts Salah + Virgil together; goal blitz lifts Salah + Diaz.
     Idiosyncratic remainder keeps individual upside unrolled.
 
+    Points + bonus heads combine via independence-assumption variance addition
+    on the (mu, sigma) plane rather than linear quantile addition. Quantile
+    arithmetic is wrong: for independent X, Y, q_a(X+Y) != q_a(X) + q_a(Y)
+    (sub-additive variance, super-additive linear-quantile-sum); the latter
+    inflates q90 by up to sqrt(2) in the equal-variance limit. Combining via
+    mu_c = mu_p + mu_b, sigma_c^2 = sigma_p^2 + sigma_b^2 reproduces the joint
+    quantile under the Gaussian envelope already used by Pearson-Tukey here.
+
     Returns: player_id, fixture_gw, mean_xp, std_xp, cap_xp, q10_mc, q90_mc.
     """
     n = len(rows)
@@ -82,7 +92,16 @@ def _joint_mc_aggregate(rows: pd.DataFrame, n_samples: int = MC_SAMPLES,
     q10 = rows["q10"].astype(float).values
     q50 = rows["q50"].astype(float).values
     q90 = rows["q90"].astype(float).values
-    mu, sd = _row_quantile_to_moments(q10, q50, q90)
+    mu_p, sd_p = _row_quantile_to_moments(q10, q50, q90)
+    if {"q10_b", "q50_b", "q90_b"}.issubset(rows.columns):
+        q10_b = rows["q10_b"].astype(float).values
+        q50_b = rows["q50_b"].astype(float).values
+        q90_b = rows["q90_b"].astype(float).values
+        mu_b, sd_b_bonus = _row_quantile_to_moments(q10_b, q50_b, q90_b)
+        mu = mu_p + mu_b
+        sd = np.sqrt(sd_p ** 2 + sd_b_bonus ** 2)
+    else:
+        mu, sd = mu_p, sd_p
 
     # (team_id, fixture_gw) → unique shock index.
     keys = list(zip(rows["team_id"].astype(int).tolist(),
@@ -240,14 +259,23 @@ class FPLEngine:
 
         rows = rows.join(predict_quantiles(self.points_models, rows[points_feature_cols()]))
 
-        # Bonus head q-quantiles, blend factor BONUS_BLEND. Lifts q90 mainly for
-        # bonus-heavy archetypes (CS-keeping defenders, save-rich GKs) without
-        # disturbing q10 floor.
+        # Bonus head: kept SEPARATE from points quantiles. Combination via
+        # variance-additive Gaussian moments downstream (see _joint_mc_aggregate
+        # + the non-MC branch below). Linear quantile addition is statistically
+        # invalid for independent components; the former code over-estimated q90
+        # by up to sqrt(2) and biased cap_xp toward high-bonus-history players.
+        # BONUS_BLEND scales the bonus contribution at the moment level
+        # (mu_b *= b, sigma_b *= b), preserving the meaning of the knob.
         if self.bonus_models is not None:
             bonus_q = predict_bonus_quantiles(self.bonus_models,
                                               rows[points_feature_cols()])
-            for c in ("q10", "q50", "q90"):
-                rows[c] = rows[c] + BONUS_BLEND * bonus_q[c].values
+            rows["q10_b"] = BONUS_BLEND * bonus_q["q10"].values
+            rows["q50_b"] = BONUS_BLEND * bonus_q["q50"].values
+            rows["q90_b"] = BONUS_BLEND * bonus_q["q90"].values
+        else:
+            rows["q10_b"] = 0.0
+            rows["q50_b"] = 0.0
+            rows["q90_b"] = 0.0
 
         pmeta = self.players.set_index("id")
         bad = pmeta["status"].isin(["s", "n", "u"]).to_dict()
@@ -285,20 +313,44 @@ class FPLEngine:
         rows["q10"] = rows["q10"] * rows["chance"]
         rows["q50"] = rows["q50"] * rows["chance"]
         rows["q90"] = rows["q90"] * rows["plays"]
+        # Bonus is conditional on minutes (DNP = 0 bonus). Scale on same
+        # plays/chance schedule as points so the combined-quantile downstream
+        # respects the minutes mixture too.
+        rows["q10_b"] = rows["q10_b"] * rows["chance"]
+        rows["q50_b"] = rows["q50_b"] * rows["chance"]
+        rows["q90_b"] = rows["q90_b"] * rows["plays"]
 
         if mc_samples and mc_samples > 0:
             mc = _joint_mc_aggregate(rows, n_samples=mc_samples, team_rho=team_rho)
             mc = mc.rename(columns={"std_xp": "variance"})
             agg = mc[["player_id", "fixture_gw", "mean_xp", "variance", "cap_xp"]]
         else:
-            agg = rows.groupby(["player_id", "fixture_gw"], as_index=False).agg(
-                q10=("q10", "sum"), q50=("q50", "sum"), q90=("q90", "sum"))
-            agg["mean_xp"] = (SWANSON_W10 * agg["q10"]
-                              + SWANSON_W50 * agg["q50"]
-                              + SWANSON_W90 * agg["q90"])
-            agg["variance"] = (agg["q90"] - agg["q10"]) / 2.56
+            # Non-MC: deterministic Pearson-Tukey on per-row moments, then
+            # variance-additive combine of points + bonus heads. Aggregate
+            # across DGW fixtures by summing means + adding variances under
+            # independence (within-row, across fixtures the same player faces).
+            # The `variance` column holds sigma (not sigma^2) to match the MC
+            # branch's downstream contract.
+            mu_p, sd_p = _row_quantile_to_moments(rows["q10"].values,
+                                                  rows["q50"].values,
+                                                  rows["q90"].values)
+            mu_b, sd_b = _row_quantile_to_moments(rows["q10_b"].values,
+                                                  rows["q50_b"].values,
+                                                  rows["q90_b"].values)
+            rows = rows.assign(
+                _mu=(mu_p + mu_b),
+                _var=(sd_p ** 2 + sd_b ** 2),
+            )
+            grouped = rows.groupby(["player_id", "fixture_gw"], as_index=False).agg(
+                mean_xp=("_mu", "sum"), var_sum=("_var", "sum"))
+            grouped["variance"] = np.sqrt(grouped["var_sum"].clip(lower=0.0))
             CAP_UPSIDE_WEIGHT = 0.3
-            agg["cap_xp"] = agg["mean_xp"] + CAP_UPSIDE_WEIGHT * (agg["q90"] - agg["mean_xp"])
+            # cap_xp = mean + gamma * (q90 - mean) under Gaussian envelope
+            # -> mean + gamma * 1.28 * sigma.
+            grouped["cap_xp"] = (grouped["mean_xp"]
+                                 + CAP_UPSIDE_WEIGHT * 1.28 * grouped["variance"])
+            agg = grouped[["player_id", "fixture_gw", "mean_xp",
+                           "variance", "cap_xp"]]
 
         xp = agg.pivot(index="player_id", columns="fixture_gw", values="mean_xp").fillna(0.0)
         xp.columns = [f"xp_{int(c)}" for c in xp.columns]
