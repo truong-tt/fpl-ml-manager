@@ -140,10 +140,17 @@ Independent quantile fits can cross. Row-sort predictions ascending at inference
 
 ### 4.3 Inference: DGWs, BGWs, injuries
 
-Per (i, t): one feature row per fixture player's club plays that GW (0/1/2). Predictions:
+Per (i, t): one feature row per fixture player's club plays that GW (0/1/2).
 
-1. **Scaled by availability** $a_{i,f}$ from two-stage minutes head ([src/train_minutes_model.py](../src/train_minutes_model.py)): `binary:logistic` $P(\text{plays})$ on full row set + `reg:logistic` $E[\text{mins}/90 \mid \text{plays}]$ on played-only subset. Combined $a = P(\text{plays}) \cdot E[\text{mins}/90 \mid \text{plays}]$. Feature subset = minutes-only superset of points cols (drops set-piece + per-action rolling — circular for predicting playing time) + cup-congestion §2.3. Engine multiplies $a$ onto q10/q50; bare $P(\text{plays})$ onto q90 (ceiling near-fully realised given player on pitch). DGW clip at 1. Next GW: FPL `chance_of_playing_next_round / 100` = hard upper bound; statuses `s`/`n`/`u` zero the row.
-2. **Aggregated** per (i, t): sum availability-weighted quantiles across fixtures. BGW → 0. DGW stacks additively.
+**Mixture-quantile transform via two-stage minutes head** ([src/train_minutes_model.py](../src/train_minutes_model.py)): `binary:logistic` $P(\text{plays})$ on full row set + `reg:logistic` $E[\text{mins}/90 \mid \text{plays}]$ on played-only subset; minutes feature subset is the minutes-only superset of points cols (drops set-piece + per-action rolling — circular for predicting playing time) + cup-congestion §2.3. Both points + bonus heads train on `minutes > 0` rows, so their predicted $q_\alpha$ are **conditional** quantiles $F_\text{played}^{-1}(\alpha)$. The unconditional points distribution is the zero-inflated mixture (DNP with prob $1-p$, else $Y \sim F_\text{played}$), whose CDF inverts to
+
+$$
+q_\alpha^\text{unc} = \begin{cases} 0 & \alpha \leq 1-p \\ F_\text{played}^{-1}\!\left(\dfrac{\alpha-(1-p)}{p}\right) & \alpha > 1-p \end{cases}
+$$
+
+with $p = P(\text{plays})$. `_mixture_quantile` in [src/fpl_engine.py](../src/fpl_engine.py) approximates $F_\text{played}^{-1}$ by piecewise-linear interpolation through the three known knots $(0.1, q_{10}),\,(0.5, q_{50}),\,(0.9, q_{90})$. This is the statistically correct unconditional transform — replaces the older $q_\alpha \cdot p$ heuristic, which is valid only for the mean ($E[\mathbb{1}\cdot Y] = p\,E[Y]$) and under-counts $q_{90}$ for rotation-prone high-ceiling profiles while inflating $q_{10}$ above 0 whenever $\alpha \leq 1-p$. DGW clip at 1. Next GW: FPL `chance_of_playing_next_round / 100` = hard upper bound on plays; statuses `s`/`n`/`u` zero the row.
+
+**Aggregation across fixtures** per (i, t): variance-additive sum of moments within the player's GW. BGW → 0. DGW stacks additively at the $(\mu, \sigma^2)$ level so the joint $q_\alpha$ of a double-fixture week reflects $\sqrt{2}\,\sigma$ dispersion rather than $2\sigma$.
 
 ### 4.4 Swanson mean + dispersion
 
@@ -181,17 +188,19 @@ Per-position monotone isotonic map on raw minutes/90 booster. Fit on walk-forwar
 
 `predict_minutes(..., apply_recalib=True)` auto-loads, linear-interp between knots, then multiplied onto quantiles in [src/fpl_engine.py](../src/fpl_engine.py). FPL `chance_of_playing_next_round` upper bound untouched.
 
-### 4.8 Bonus head (additive blend)
+### 4.8 Bonus head (variance-additive combine)
 
-[src/train_bonus_model.py](../src/train_bonus_model.py). Bonus ∈ {0,1,2,3} = top-3 BPS scorers per match. Three quantile boosters (`reg:quantileerror`, $\alpha \in \{0.10, 0.50, 0.90\}$), single shared model (sparse target). Engine sums:
+[src/train_bonus_model.py](../src/train_bonus_model.py). Bonus ∈ {0,1,2,3} = top-3 BPS scorers per match. Three quantile boosters (`reg:quantileerror`, $\alpha \in \{0.10, 0.50, 0.90\}$), single shared model (sparse target), trained on `minutes > 0` rows (DNP bonus = 0 by definition; filter prevents q-collapse toward 0). Points head trained on `total_points - bonus` in [src/features.py](../src/features.py) → no double-count.
 
-$$q^\text{combined}_\alpha = q^\text{points}_\alpha + \beta \cdot q^\text{bonus}_\alpha, \quad \beta = 1.0$$
+Engine combines the points + bonus heads at the moment level rather than by summing quantiles. Linear quantile addition is statistically invalid for independent components — $q_\alpha(X+Y) \neq q_\alpha(X) + q_\alpha(Y)$, and the latter over-states $q_{90}$ by up to $\sqrt{2}$ in the equal-variance limit, biasing $\kappa$ toward high-bonus-history archetypes whose true joint upside is lower. Pearson–Tukey gives per-row $(\mu_p, \sigma_p)$, $(\mu_b, \sigma_b)$; under independence the combined distribution has
 
-`BONUS_BLEND` knob. Points head trained on `total_points - bonus` (excluded in [src/features.py](../src/features.py)) → no double-count.
+$$\mu_c = \mu_p + \beta\,\mu_b, \qquad \sigma_c^2 = \sigma_p^2 + \beta^2\,\sigma_b^2$$
+
+so $q_{\alpha,c} = \mu_c + z_\alpha\,\sigma_c$ under the Gaussian envelope already used by the sampler in §4.9. `BONUS_BLEND` ($\beta$, default 1.0) scales the bonus moments uniformly — a true damping knob, not a quantile multiplier.
 
 ### 4.9 Joint MC aggregation
 
-[src/fpl_engine.py](../src/fpl_engine.py) `_joint_mc_aggregate`. Per (team, GW) shared shock $\eta \sim \mathcal{N}(0,1)$ + per-row idiosyncratic $\varepsilon$, blended via team-correlation $\rho$. Captures within-club covariance (Liverpool CS lifts Virgil + Salah together).
+[src/fpl_engine.py](../src/fpl_engine.py) `_joint_mc_aggregate`. Per-row moments arrive already combined per §4.8 — points + bonus folded into $(\mu, \sigma)$ via variance-additive independence — and already conditioned to the unconditional distribution per §4.3. The sampler then layers a per-(team, GW) shared shock $\eta \sim \mathcal{N}(0,1)$ on top of per-row idiosyncratic $\varepsilon$, blended via team-correlation $\rho$. Captures within-club covariance (Liverpool CS lifts Virgil + Salah together) without re-introducing the bias-prone linear quantile sum.
 
 `MC_TEAM_RHO` from `data/team_rho.json` ([src/fit_team_rho.py](../src/fit_team_rho.py); fallback 0.4). `MC_SAMPLES = 800`. Per (i, t): sum draw-level pts across DGW fixtures within draw, take sample mean (μ), std (s), 90th-quantile (`cap_xp`). $\rho = 0$ → diagonal aggregation.
 
