@@ -1,8 +1,8 @@
 # GW38 Lineup
 
-- **Bank:** £0.2m
+- **Bank:** £0.1m
 - **Hits:** 0
-- **Squad Value:** £99.8m
+- **Squad Value:** £99.9m
 - **XI Expected Points (incl. captain):** 63.5
 
 ## Starting XI
@@ -28,7 +28,7 @@
 | Darlow | LEE | GK | 4.0 | 3.73 | 3.73 |  |
 | Dewsbury-Hall | EVE | MID | 5.3 | 3.46 | 3.46 |  |
 | Anthony | BUR | MID | 5.0 | 3.95 | 3.95 |  |
-| Bowen | WHU | FWD | 7.7 | 4.27 | 4.27 |  |
+| Bowen | WHU | FWD | 7.8 | 4.27 | 4.27 |  |
 
 ## Transfers
 
