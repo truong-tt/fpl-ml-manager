@@ -10,14 +10,14 @@
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
 | Pope | NEW | GK | 5.0 | 6.9 | 6.9 |  |
-| Virgil | LIV | DEF | 6.0 | 5.3 | 5.3 |  |
+| Virgil | LIV | DEF | 6.1 | 5.35 | 5.35 |  |
 | Estève | BUR | DEF | 3.8 | 5.52 | 5.52 |  |
 | O'Reilly | MCI | DEF | 5.3 | 6.02 | 6.02 |  |
 | Botman | NEW | DEF | 4.9 | 6.21 | 6.21 |  |
 | Thiaw | NEW | DEF | 4.9 | 6.12 | 6.12 |  |
 | B.Fernandes | MUN | MID | 10.4 | 10.31 | 5.15 | (C) |
-| Szoboszlai | LIV | MID | 7.1 | 4.7 | 4.7 |  |
-| Cherki | MCI | MID | 6.6 | 4.4 | 4.4 |  |
+| Szoboszlai | LIV | MID | 7.1 | 4.66 | 4.66 |  |
+| Cherki | MCI | MID | 6.5 | 4.4 | 4.4 |  |
 | Gyökeres | ARS | FWD | 9.1 | 4.95 | 4.95 | (VC) |
 | Haaland | MCI | FWD | 14.7 | 5.05 | 5.05 |  |
 
