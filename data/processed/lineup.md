@@ -1,9 +1,9 @@
 # GW38 Lineup
 
-- **Bank:** £0.2m
+- **Bank:** £0.0m
 - **Hits:** 0
-- **Squad Value:** £99.8m
-- **XI Expected Points (incl. captain):** 58.5
+- **Squad Value:** £100.0m
+- **XI Expected Points (incl. captain):** 59.3
 
 ## Starting XI
 
@@ -12,11 +12,11 @@
 | Kelleher | BRE | GK | 4.8 | 4.92 | 4.92 |  |
 | Truffert | BOU | DEF | 4.8 | 5.74 | 5.74 |  |
 | Hill | BOU | DEF | 4.2 | 5.54 | 5.54 |  |
+| Guéhi | MCI | DEF | 5.1 | 5.8 | 5.8 |  |
 | O'Reilly | MCI | DEF | 5.3 | 5.81 | 5.81 |  |
-| Thiaw | NEW | DEF | 4.9 | 4.97 | 4.97 |  |
 | Botman | NEW | DEF | 4.9 | 5.08 | 5.08 |  |
-| Rayan | BOU | MID | 5.4 | 4.38 | 4.38 |  |
 | Sarr | CRY | MID | 6.4 | 4.15 | 4.15 |  |
+| Rayan | BOU | MID | 5.4 | 4.38 | 4.38 |  |
 | B.Fernandes | MUN | MID | 10.4 | 8.97 | 4.48 | (C) |
 | Haaland | MCI | FWD | 14.7 | 4.3 | 4.3 |  |
 | Bowen | WHU | FWD | 7.8 | 4.64 | 4.64 | (VC) |
@@ -34,7 +34,7 @@
 
 | Out | In |
 | --- | --- |
-| Cherki | Sarr |
+| Thiaw | Guéhi |
 
 ## Chip Recommendations
 
