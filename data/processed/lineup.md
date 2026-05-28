@@ -1,9 +1,9 @@
 # GW38 Lineup
 
-- **Bank:** £5.9m
+- **Bank:** £5.8m
 - **Hits:** 0
-- **Squad Value:** £94.1m
-- **XI Expected Points (incl. captain):** 61.1
+- **Squad Value:** £94.2m
+- **XI Expected Points (incl. captain):** 61.9
 
 ## Starting XI
 
@@ -11,14 +11,14 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Donnarumma | MCI | GK | 5.6 | 6.55 | 6.55 |  |
 | Virgil | LIV | DEF | 6.1 | 5.61 | 5.61 |  |
-| O'Reilly | MCI | DEF | 5.3 | 6.24 | 6.24 |  |
 | Guéhi | MCI | DEF | 5.1 | 6.0 | 6.0 |  |
-| Truffert | BOU | DEF | 4.8 | 4.53 | 4.53 |  |
+| O'Reilly | MCI | DEF | 5.3 | 6.24 | 6.24 |  |
+| Thiaw | NEW | DEF | 4.9 | 5.31 | 5.31 |  |
 | Botman | NEW | DEF | 4.9 | 5.61 | 5.61 |  |
-| Anthony | BUR | MID | 5.0 | 4.28 | 4.28 |  |
 | Sarr | CRY | MID | 6.4 | 4.08 | 4.08 |  |
-| Rayan | BOU | MID | 5.4 | 4.33 | 4.33 | (VC) |
+| Anthony | BUR | MID | 5.0 | 4.28 | 4.28 |  |
 | B.Fernandes | MUN | MID | 10.4 | 4.1 | 4.1 |  |
+| Rayan | BOU | MID | 5.4 | 4.33 | 4.33 | (VC) |
 | Bowen | WHU | FWD | 7.8 | 9.78 | 4.89 | (C) |
 
 ## Bench
@@ -34,7 +34,7 @@
 
 | Out | In |
 | --- | --- |
-| Hill | Virgil |
+| Truffert | Thiaw |
 
 ## Chip Recommendations
 
