@@ -1,9 +1,9 @@
 # GW38 Lineup
 
-- **Bank:** £6.8m
+- **Bank:** £9.3m
 - **Hits:** 0
-- **Squad Value:** £93.2m
-- **XI Expected Points (incl. captain):** 62.4
+- **Squad Value:** £90.7m
+- **XI Expected Points (incl. captain):** 62.9
 
 ## Starting XI
 
@@ -17,8 +17,8 @@
 | Botman | NEW | DEF | 4.9 | 5.61 | 5.61 |  |
 | Szoboszlai | LIV | MID | 7.1 | 4.62 | 4.62 | (VC) |
 | Rayan | BOU | MID | 5.4 | 4.33 | 4.33 |  |
-| B.Fernandes | MUN | MID | 10.4 | 4.1 | 4.1 |  |
 | Anthony | BUR | MID | 5.0 | 4.28 | 4.28 |  |
+| Evanilson | BOU | FWD | 6.6 | 4.55 | 4.55 |  |
 | Bowen | WHU | FWD | 7.8 | 9.78 | 4.89 | (C) |
 
 ## Bench
@@ -27,17 +27,17 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Kelleher | BRE | GK | 4.8 | 2.3 | 2.3 |  |
 | Sarr | CRY | MID | 6.4 | 4.08 | 4.08 |  |
-| Gyökeres | ARS | FWD | 9.1 | 3.47 | 3.47 |  |
+| B.Fernandes | MUN | MID | 10.4 | 4.1 | 4.1 |  |
 | Flemming | BUR | FWD | 5.3 | 3.84 | 3.84 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Cunha | Szoboszlai |
+| Gyökeres | Evanilson |
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW38 — Bowen (+5.7 pts)
-- **Bench Boost:** GW38 (+13.7 pts)
+- **Bench Boost:** GW38 (+14.3 pts)
 - **Wildcard:** hold (1 suggested transfers, 0 hits)
