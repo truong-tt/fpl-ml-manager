@@ -1,9 +1,9 @@
 # GW38 Lineup
 
-- **Bank:** £9.1m
+- **Bank:** £5.5m
 - **Hits:** 0
-- **Squad Value:** £90.9m
-- **XI Expected Points (incl. captain):** 62.8
+- **Squad Value:** £94.5m
+- **XI Expected Points (incl. captain):** 63.1
 
 ## Starting XI
 
@@ -16,8 +16,8 @@
 | Thiaw | NEW | DEF | 4.9 | 5.31 | 5.31 |  |
 | Botman | NEW | DEF | 4.9 | 5.61 | 5.61 |  |
 | Rayan | BOU | MID | 5.4 | 4.33 | 4.33 |  |
-| Anthony | BUR | MID | 5.0 | 4.28 | 4.28 |  |
-| Szoboszlai | LIV | MID | 7.1 | 4.51 | 4.51 | (VC) |
+| Saka | ARS | MID | 10.0 | 4.6 | 4.6 | (VC) |
+| Szoboszlai | LIV | MID | 7.1 | 4.51 | 4.51 |  |
 | Evanilson | BOU | FWD | 6.6 | 4.55 | 4.55 |  |
 | Bowen | WHU | FWD | 7.8 | 9.78 | 4.89 | (C) |
 
@@ -26,7 +26,7 @@
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
 | Pope | NEW | GK | 5.0 | 5.63 | 5.63 |  |
-| Sarr | CRY | MID | 6.4 | 4.08 | 4.08 |  |
+| Anthony | BUR | MID | 5.0 | 4.28 | 4.28 |  |
 | B.Fernandes | MUN | MID | 10.4 | 4.1 | 4.1 |  |
 | Flemming | BUR | FWD | 5.3 | 3.84 | 3.84 |  |
 
@@ -34,10 +34,10 @@
 
 | Out | In |
 | --- | --- |
-| Kelleher | Pope |
+| Sarr | Saka |
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW38 — Bowen (+5.7 pts)
-- **Bench Boost:** GW38 (+17.6 pts)
+- **Bench Boost:** GW38 (+17.8 pts)
 - **Wildcard:** hold (1 suggested transfers, 0 hits)
