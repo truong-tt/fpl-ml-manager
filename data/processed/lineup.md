@@ -32,12 +32,10 @@
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Sarr | Saka |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW38 — Bowen (+5.7 pts)
 - **Bench Boost:** GW38 (+17.8 pts)
-- **Wildcard:** hold (1 suggested transfers, 0 hits)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
