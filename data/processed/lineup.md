@@ -32,15 +32,10 @@
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Evanilson | Senesi |
-| Thiaw | B.Fernandes |
-| Virgil | Truffert |
-| Rayan | Flemming |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW38 — Saka (+5.7 pts)
 - **Bench Boost:** GW38 (+16.2 pts)
-- **Wildcard:** PLAY NOW (4 suggested transfers, 0 hits)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
