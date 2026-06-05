@@ -32,14 +32,10 @@
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Senesi | Thiaw |
-| B.Fernandes | Virgil |
-| Truffert | Rayan |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW38 — Haaland (+8.0 pts)
 - **Bench Boost:** GW38 (+18.1 pts)
-- **Wildcard:** hold (3 suggested transfers, 0 hits)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
