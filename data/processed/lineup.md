@@ -1,43 +1,43 @@
 # GW38 Lineup
 
-- **Bank:** £4.6m
+- **Bank:** £5.9m
 - **Hits:** 0
-- **Squad Value:** £95.4m
-- **XI Expected Points (incl. captain):** 63.0
+- **Squad Value:** £94.1m
+- **XI Expected Points (incl. captain):** 60.9
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Donnarumma | MCI | GK | 5.6 | 6.55 | 6.55 |  |
-| Virgil | LIV | DEF | 6.1 | 5.61 | 5.61 |  |
-| Guéhi | MCI | DEF | 5.1 | 6.0 | 6.0 |  |
-| O'Reilly | MCI | DEF | 5.3 | 6.24 | 6.24 |  |
-| Thiaw | NEW | DEF | 4.9 | 5.31 | 5.31 |  |
-| Botman | NEW | DEF | 4.9 | 5.61 | 5.61 |  |
-| Saka | ARS | MID | 10.0 | 4.6 | 4.6 | (VC) |
-| Tavernier | BOU | MID | 5.3 | 4.45 | 4.45 |  |
-| Szoboszlai | LIV | MID | 7.1 | 4.51 | 4.51 |  |
-| Rayan | BOU | MID | 5.4 | 4.33 | 4.33 |  |
-| Bowen | WHU | FWD | 7.8 | 9.78 | 4.89 | (C) |
+| Donnarumma | MCI | GK | 5.6 | 6.54 | 6.54 |  |
+| Truffert | BOU | DEF | 4.8 | 5.74 | 5.74 |  |
+| Guéhi | MCI | DEF | 5.1 | 5.8 | 5.8 |  |
+| O'Reilly | MCI | DEF | 5.3 | 5.81 | 5.81 |  |
+| Thiaw | NEW | DEF | 4.9 | 4.97 | 4.97 |  |
+| Botman | NEW | DEF | 4.9 | 5.08 | 5.08 |  |
+| Saka | ARS | MID | 10.0 | 9.1 | 4.55 | (C) |
+| Tavernier | BOU | MID | 5.3 | 4.32 | 4.32 |  |
+| B.Fernandes | MUN | MID | 10.4 | 4.48 | 4.48 | (VC) |
+| Rayan | BOU | MID | 5.4 | 4.38 | 4.38 |  |
+| Bowen | WHU | FWD | 7.8 | 4.64 | 4.64 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Pope | NEW | GK | 5.0 | 5.63 | 5.63 |  |
-| B.Fernandes | MUN | MID | 10.4 | 4.1 | 4.1 |  |
-| Flemming | BUR | FWD | 5.3 | 3.84 | 3.84 |  |
-| Thiago | BRE | FWD | 7.2 | 3.1 | 3.1 |  |
+| Pope | NEW | GK | 5.0 | 5.07 | 5.07 |  |
+| Szoboszlai | LIV | MID | 7.1 | 3.65 | 3.65 |  |
+| Flemming | BUR | FWD | 5.3 | 3.8 | 3.8 |  |
+| Thiago | BRE | FWD | 7.2 | 3.73 | 3.73 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Truffert | Virgil |
+| Virgil | Truffert |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW38 — Bowen (+5.7 pts)
-- **Bench Boost:** GW38 (+16.7 pts)
+- **Triple Captain:** GW38 — Saka (+5.7 pts)
+- **Bench Boost:** GW38 (+16.3 pts)
 - **Wildcard:** hold (1 suggested transfers, 0 hits)
