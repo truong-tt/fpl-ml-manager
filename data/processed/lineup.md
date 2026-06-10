@@ -1,41 +1,46 @@
 # GW38 Lineup
 
-- **Bank:** £5.9m
+- **Bank:** £3.8m
 - **Hits:** 0
-- **Squad Value:** £94.1m
-- **XI Expected Points (incl. captain):** 60.9
+- **Squad Value:** £96.2m
+- **XI Expected Points (incl. captain):** 66.1
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Donnarumma | MCI | GK | 5.6 | 6.54 | 6.54 |  |
-| Truffert | BOU | DEF | 4.8 | 5.74 | 5.74 |  |
-| Guéhi | MCI | DEF | 5.1 | 5.8 | 5.8 |  |
-| O'Reilly | MCI | DEF | 5.3 | 5.81 | 5.81 |  |
-| Thiaw | NEW | DEF | 4.9 | 4.97 | 4.97 |  |
-| Botman | NEW | DEF | 4.9 | 5.08 | 5.08 |  |
-| Saka | ARS | MID | 10.0 | 9.1 | 4.55 | (C) |
-| Tavernier | BOU | MID | 5.3 | 4.32 | 4.32 |  |
-| B.Fernandes | MUN | MID | 10.4 | 4.48 | 4.48 | (VC) |
-| Rayan | BOU | MID | 5.4 | 4.38 | 4.38 |  |
-| Bowen | WHU | FWD | 7.8 | 4.64 | 4.64 |  |
+| Donnarumma | MCI | GK | 5.6 | 6.55 | 6.55 |  |
+| Virgil | LIV | DEF | 6.1 | 5.61 | 5.61 |  |
+| Estève | BUR | DEF | 3.8 | 5.27 | 5.27 |  |
+| O'Reilly | MCI | DEF | 5.3 | 6.24 | 6.24 |  |
+| Thiaw | NEW | DEF | 4.9 | 5.31 | 5.31 |  |
+| Botman | NEW | DEF | 4.9 | 5.61 | 5.61 |  |
+| Tavernier | BOU | MID | 5.3 | 4.45 | 4.45 |  |
+| Szoboszlai | LIV | MID | 7.1 | 4.62 | 4.62 |  |
+| Saka | ARS | MID | 10.0 | 4.6 | 4.6 |  |
+| Haaland | MCI | FWD | 14.7 | 12.99 | 6.5 | (C) |
+| Bowen | WHU | FWD | 7.8 | 4.89 | 4.89 | (VC) |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Pope | NEW | GK | 5.0 | 5.07 | 5.07 |  |
-| Szoboszlai | LIV | MID | 7.1 | 3.65 | 3.65 |  |
-| Flemming | BUR | FWD | 5.3 | 3.8 | 3.8 |  |
-| Thiago | BRE | FWD | 7.2 | 3.73 | 3.73 |  |
+| Pope | NEW | GK | 5.0 | 5.63 | 5.63 |  |
+| Rayan | BOU | MID | 5.4 | 4.33 | 4.33 |  |
+| Anthony | BUR | MID | 5.0 | 4.28 | 4.28 |  |
+| Flemming | BUR | FWD | 5.3 | 3.84 | 3.84 |  |
 
 ## Transfers
 
-_Hold — no transfer beats a 4-pt hit._
+| Out | In |
+| --- | --- |
+| Thiago | Anthony |
+| B.Fernandes | Virgil |
+| Truffert | Haaland |
+| Guéhi | Estève |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW38 — Saka (+5.7 pts)
-- **Bench Boost:** GW38 (+16.3 pts)
-- **Wildcard:** hold (0 suggested transfers, 0 hits)
+- **Triple Captain:** GW38 — Haaland (+8.0 pts)
+- **Bench Boost:** GW38 (+18.1 pts)
+- **Wildcard:** PLAY NOW (4 suggested transfers, 0 hits)
