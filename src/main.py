@@ -23,6 +23,7 @@ OUT_DIR = DATA_DIR / "processed"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 HORIZON = 8
+SEASON_END_GW = 38
 # Linear-std variance penalty (was variance^2). 0.05 = equivalent scale.
 # Set 0.0 if solver still under-invests in premiums.
 LAMBDA_VAR, LAMBDA_EO, BENCH_WEIGHT = 0.05, 0.0, 0.15
@@ -54,6 +55,24 @@ def _current_gw(fixtures: pd.DataFrame) -> int:
     g = fx.groupby("event")["finished"].agg(sum_="sum", size_="size")
     upcoming = g[(g["sum_"] / g["size_"]) < 0.5]
     return int(upcoming.index.min()) if not upcoming.empty else 38
+
+
+def _last_finished_gw(fixtures: pd.DataFrame) -> int:
+    """Max fully finished GW in the current season."""
+    fx = fixtures
+    if "season" in fx.columns:
+        fx = fx[fx["season"] == SEASON]
+    if fx.empty:
+        return 0
+    fin = fx["finished"].astype(str).str.lower().isin(["true", "1"])
+    done = fin.groupby(fx["event"]).all()
+    finished = done[done].index.astype(int)
+    return int(finished.max()) if len(finished) else 0
+
+
+def _season_complete(fixtures: pd.DataFrame) -> bool:
+    """True once the current season has a fully finished GW38."""
+    return _last_finished_gw(fixtures) >= SEASON_END_GW
 
 
 # Live-match window guard. Daily cron fires at 05:30 + 17:30 UTC; skip when a
@@ -288,12 +307,26 @@ def _render(
 
 def main() -> None:
     """End-to-end weekly pipeline. Invoked by GH Actions workflow."""
+    fixtures_path = DATA_DIR / "fixtures.csv"
+    if fixtures_path.exists():
+        try:
+            cached_fixtures = pd.read_csv(fixtures_path)
+        except Exception:
+            cached_fixtures = None
+        if cached_fixtures is not None and _season_complete(cached_fixtures):
+            print("[main] Season complete in cached fixtures — stop scheduled pipeline.")
+            return
+
     refresh_data()
 
     fixtures = pd.read_csv(DATA_DIR / "fixtures.csv")
     history = pd.read_csv(DATA_DIR / "history.csv")
     players = pd.read_csv(DATA_DIR / "players.csv")
     teams = pd.read_csv(DATA_DIR / "teams.csv")
+
+    if _season_complete(fixtures):
+        print("[main] Season complete after refresh — stop scheduled pipeline.")
+        return
 
     if _gw_in_play(fixtures):
         print("[main] GW in play — skip pipeline. "

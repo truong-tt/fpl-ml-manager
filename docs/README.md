@@ -5,7 +5,7 @@
 [![PuLP](https://img.shields.io/badge/PuLP-MILP%20%2B%20RHC-yellow.svg)](https://coin-or.github.io/pulp/)
 [![Schedule](https://img.shields.io/badge/GitHub_Actions-2%C3%97daily-lightgrey.svg)](../.github/workflows/pipeline.yml)
 
-Data-driven agent. Picks + manages 15-player FPL squad. Pipeline: quantile-regression boosting for per-position point distributions; two-stage minutes head with cup-congestion rotation signal; independent Poisson for match goals; MILP for squad + XI + captain over rolling horizon; greedy + alt-solve chip scheduling. Data: [olbauday/FPL-Core-Insights](https://github.com/olbauday/FPL-Core-Insights) CSVs (FPL API + Opta + ClubElo + EFL/UEFA cup fixtures, 2×/day) + live FPL API overlay for prices + injuries.
+Data-driven agent. Picks + manages a 15-player FPL squad with quantile-regression point distributions, two-stage minutes prediction, independent Poisson match goals, MILP squad/XI/captain optimization, and chip scheduling. Data comes from [olbauday/FPL-Core-Insights](https://github.com/olbauday/FPL-Core-Insights) plus a live FPL API price/injury overlay.
 
 > **New to FPL?** See [FPL 101 primer](FPL_101.md).
 > **Scope:** Research / personal.
@@ -32,7 +32,7 @@ Data-driven agent. Picks + manages 15-player FPL squad. Pipeline: quantile-regre
 
 ## 1. Architecture
 
-End-to-end. CSVs + live overlay → markdown report (squad, XI, captain, transfers, hits, chips). 2×/day refresh.
+End-to-end: data refresh → features/models → projection frame → MILP/chips → markdown report + squad snapshot.
 
 ```mermaid
 flowchart TD
@@ -52,9 +52,7 @@ flowchart TD
     D & E & M & N --> F --> G --> H --> I
 ```
 
-Artifacts persist under `data/`. Retrain only missing. GitHub Actions [.github/workflows/pipeline.yml](../.github/workflows/pipeline.yml) runs 05:30 + 17:30 UTC, 30 min after upstream refresh. Walk-forward recalib auto-fires when JSONs > `RECALIB_STALE_DAYS` (= 14) — `_maybe_recalibrate` in [src/main.py](../src/main.py).
-
-**Guards in [src/main.py](../src/main.py)**: (a) `_ensure_models` checks cached booster `feature_names` vs `features.py` output (`_schema_drift`); forces retrain + wipes matching recalib JSON. (b) `_gw_in_play` short-circuits when fixture live (kickoff last 3h, `finished=False`) or imminent (next 2h) — no useless lineup mid-GW.
+Artifacts persist under `data/`. [src/main.py](../src/main.py) owns model schema checks (`_ensure_models`), stale recalibration (`_maybe_recalibrate`), and the live/imminent GW lockout (`_gw_in_play`).
 
 ---
 
@@ -162,7 +160,9 @@ Dispersion: central mass ≈ Gaussian → q10–q90 ≈ 2.56 σ. Emit **std** $s
 
 Separate from XI selection. Anchor on μ + fraction of upside:
 
-$$\kappa = \mu + \gamma (q_{90} - \mu), \quad \gamma = 0.3$$
+$$
+\kappa = \mu + \gamma (q_{90} - \mu), \quad \gamma = 0.3
+$$
 
 `CAP_UPSIDE_WEIGHT` in [src/fpl_engine.py](../src/fpl_engine.py). Lower (0.2) → safer; higher (0.5+) → boom-chase.
 
@@ -194,23 +194,27 @@ Per-position monotone isotonic map on raw minutes/90 booster. Fit on walk-forwar
 
 Engine combines the points + bonus heads at the moment level rather than by summing quantiles. Linear quantile addition is statistically invalid for independent components — $q_\alpha(X+Y) \neq q_\alpha(X) + q_\alpha(Y)$, and the latter over-states $q_{90}$ by up to $\sqrt{2}$ in the equal-variance limit, biasing $\kappa$ toward high-bonus-history archetypes whose true joint upside is lower. Pearson–Tukey gives per-row $(\mu_p, \sigma_p)$, $(\mu_b, \sigma_b)$; under independence the combined distribution has
 
-$$\mu_c = \mu_p + \beta\,\mu_b, \qquad \sigma_c^2 = \sigma_p^2 + \beta^2\,\sigma_b^2$$
+$$
+\mu_c = \mu_p + \beta\,\mu_b, \qquad \sigma_c^2 = \sigma_p^2 + \beta^2\,\sigma_b^2
+$$
 
 so $q_{\alpha,c} = \mu_c + z_\alpha\,\sigma_c$ under the Gaussian envelope already used by the sampler in §4.9. `BONUS_BLEND` ($\beta$, default 1.0) scales the bonus moments uniformly — a true damping knob, not a quantile multiplier.
 
 ### 4.9 Joint MC aggregation
 
-[src/fpl_engine.py](../src/fpl_engine.py) `_joint_mc_aggregate`. Per-row moments arrive already combined per §4.8 — points + bonus folded into $(\mu, \sigma)$ via variance-additive independence — and already conditioned to the unconditional distribution per §4.3. The sampler layers a per-(team, GW) **position-factor vector** $f \sim \mathcal{N}(0, C)$ on top of per-row idiosyncratic $\varepsilon$, where $C \in \mathbb{R}^{4 \times 4}$ is the within-team position correlation matrix from `data/team_rho.json::by_pos_pair`. Captures within-club covariance (Liverpool CS lifts Virgil + Salah together; goal blitz lifts Salah + Diaz) with per-position asymmetry — GK-DEF/DEF-DEF share most of the signal, FWD-FWD almost none.
+[src/fpl_engine.py](../src/fpl_engine.py) `_joint_mc_aggregate` consumes the unconditional per-row moments from sections 4.3 and 4.8, then adds same-team covariance. It layers a per-(team, GW) **position-factor vector** $f \sim \mathcal{N}(0, C)$ on top of per-row idiosyncratic $\varepsilon$, where $C \in \mathbb{R}^{4 \times 4}$ is the within-team position correlation matrix from `data/team_rho.json::by_pos_pair`. Captures within-club covariance with per-position asymmetry — GK-DEF/DEF-DEF share most of the signal, FWD-FWD almost none.
 
 **Cholesky factor model.** Build a 4×4 PSD matrix $C$ (diag = same-position ρ, off-diag = cross-position ρ; missing entries fall back to global ρ; negative diagonals — e.g. empirical 4-4 ≈ -0.11 on small n — clipped to 0; eigen-clip floor 1e-6 to guarantee PSD). Cholesky $C = L L^\top$. Per (team, GW): draw $z \sim \mathcal{N}(0, I_4)$, set $f = Lz$. A row at position $p$ takes its team-correlated component as $\sigma_i \cdot f_{p}$; the idiosyncratic remainder $\sigma_i \sqrt{1 - C_{p,p}} \, \varepsilon_i$ restores $\mathrm{Var}(X_i) = \sigma_i^2$. The induced covariance is
 
-$$\mathrm{Cov}(X_i, X_j \mid \text{same team, GW}) = \sigma_i \sigma_j \cdot C_{p_i, p_j}$$
+$$
+\mathrm{Cov}(X_i, X_j \mid \text{same team, GW}) = \sigma_i \sigma_j \cdot C_{p_i, p_j}
+$$
 
 exactly — i.e. recovers the empirical position-pair correlation directly. The earlier scalar-ρ formulation induced $\sigma_i \sigma_j \rho^2$ (variance-explained, not correlation), an under-statement of within-club covariance and unable to distinguish GK-DEF ($C_{1,2} \approx 0.23$) from FWD-FWD ($C_{4,4} \approx 0$). Smoke test confirms reproduction to $\sim 10^{-4}$ on 20k Monte-Carlo draws. Legacy scalar path retained as a fallback (`team_corr=None`) when `team_rho.json` is absent.
 
 `MC_TEAM_CORR = (C, L)` loaded by `_load_team_corr_matrix` at module import. Scalar fallback `MC_TEAM_RHO` from `rho_global` (default 0.4). `MC_SAMPLES = 800`. Per (i, t): sum draw-level pts across DGW fixtures within draw, take sample mean (μ), std (s), 90th-quantile (`cap_xp`).
 
-**Empirical fit**: standardised residuals $z = (y - \mu) / s$ from points + bonus heads, paired same-team-same-GW, Pearson. `team_rho.json` stores global ρ + position-pair breakdown — both now consumed by the engine (matrix path is the default; scalar `rho_global` remains the fallback path when the JSON is missing).
+**Empirical fit**: standardised residuals $z = (y - \mu) / s$ from points + bonus heads, paired same-team-same-GW, Pearson. `team_rho.json` stores the position-pair matrix plus `rho_global` fallback.
 
 ---
 
@@ -284,7 +288,7 @@ Only $t_0$ executed: `transfers_in/out`, `xi_ids`, `captain`, `vice`, `hits`. Ne
 | **FH** | GW with most blanking teams. Non-consecutive |
 | **WC** | Trigger if RHC proposes ≥4 transfers IN or ≥2 hits |
 
-**Replay** ([src/season_replay.py](../src/season_replay.py)): all four under FPL "one chip per GW" rule. Per-half candidates compete on uplift — TC: $q_{90,\text{cap}} - \mu_\text{cap}$ (trigger 4.5), BB: $\sum_\text{bench} \mu$ (10.0), WC: horizon-discounted XI-EV uplift from `solve_initial_squad(proj, budget=squad_val+bank)` rebuild (8.0), FH: one-GW XI-EV uplift from single-GW slice via `_one_gw_proj` (6.0, non-consecutive). WC + FH alt-solves gated by `WC_ATTEMPT_GWS` / `FH_ATTEMPT_GWS` windows + half-deadline force → ~16 alt-solves/season at `time_limit=30s`. Force-fire GW19/GW38 picks max-uplift unused chip. WC replaces squad + resets next-GW FT to 1; FH = one-GW temp XI, reverts squad/bank/FT.
+**Replay** ([src/season_replay.py](../src/season_replay.py)): applies the same one-chip-per-GW rule, compares TC/BB/WC/FH uplift, gates expensive WC/FH alt-solves to configured attempt windows plus GW19/GW38 force-fire, and writes `data/season_replay.csv` + `data/processed/season_replay.md`.
 
 ---
 
@@ -319,49 +323,31 @@ Walk-forward held-out mins/90 + binary `played`: MAE, ROC-AUC, Brier, 10-bin rel
 
 ```text
 fpl-ml-manager/
-├── src/
-│   ├── main.py                  # Orchestrator + report writer
-│   ├── data_loader.py           # FPL-CI CSV + live API overlay
-│   ├── features.py              # Elo + rolling + Opta
-│   ├── train_match_model.py     # Poisson goals + CS marginals
-│   ├── train_points_model.py    # 12 quantile boosters
-│   ├── train_minutes_model.py   # Two-stage P(plays) × E[mins/90|plays]
-│   ├── train_bonus_model.py     # 3 quantile boosters on FPL bonus
-│   ├── fit_team_rho.py          # Empirical team-correlation fit
-│   ├── fpl_engine.py            # Inference + projection frame + joint MC
-│   ├── optimizer.py             # MILP + RHC
-│   ├── chips.py                 # TC/BB/FH/WC heuristics
-│   ├── backtest.py              # Walk-forward CV
-│   ├── calibration.py           # Coverage/pinball/Brier
-│   ├── recalibrate_points.py    # Per-(pos,α) isotonic / affine
-│   ├── recalibrate_minutes.py   # Per-pos isotonic
-│   ├── league_table.py          # Standings + stakes
-│   └── season_replay.py         # GW-by-GW chip-aware backtest
-├── data/
-│   ├── players.csv, teams.csv, fixtures.csv, history.csv
-│   ├── cup_fixtures.csv                     # EFL/UCL/UEL/UECL congestion src
-│   ├── fixture_lambdas.csv                  # λ_h, λ_a, cs_{h,a}_p per fixture
-│   ├── season_replay.csv                    # Replay state (CI gate reads this)
-│   ├── .fpl_ci_cache/                       # raw per-GW snapshots
-│   ├── xgb_home_goals.json, xgb_away_goals.json
-│   ├── xgb_points_q{10,50,90}_p{1,2,3,4}.json
-│   ├── xgb_minutes_plays.json               # P(plays)
-│   ├── xgb_minutes_when_played.json         # E[mins/90 | plays]
-│   ├── xgb_bonus_q{10,50,90}.json
-│   ├── points_recalib.json
-│   ├── minutes_recalib.json
-│   ├── team_rho.json
-│   └── processed/
-│       ├── lineup.md                    # Weekly human report
-│       ├── squad_snapshot.csv           # Next-RHC state (read by next run)
-│       ├── season_replay.md             # Chip-aware GW-by-GW human report
-│       └── backtest/                    # Preds + calib tables
-├── docs/
-│   ├── README.md
-│   └── FPL_101.md
-└── .github/workflows/
-    ├── pipeline.yml             # FPL Daily Update — 05:30 + 17:30 UTC daily
-    └── season_replay.yml        # Auto-fires on pipeline success + workflow_dispatch
+|-- src/
+|   |-- main.py                  # Pipeline entrypoint + report writer
+|   |-- data_loader.py           # FPL-CI + live FPL API ingest
+|   |-- features.py              # Elo, rolling, Opta, stakes, cup congestion
+|   |-- train_*_model.py         # Match, points, minutes, bonus heads
+|   |-- fpl_engine.py            # Projection frame + joint MC
+|   |-- optimizer.py             # MILP + RHC
+|   |-- chips.py                 # TC/BB/FH/WC heuristics
+|   |-- backtest.py, calibration.py
+|   |-- recalibrate_*.py
+|   `-- league_table.py, fit_team_rho.py, season_replay.py
+|-- data/
+|   |-- players.csv, teams.csv, fixtures.csv, history.csv
+|   |-- cup_fixtures.csv, fixture_lambdas.csv, team_rho.json
+|   |-- xgb_*.json, points_recalib.json, minutes_recalib.json
+|   |-- season_replay.csv
+|   `-- processed/
+|       |-- lineup.md, squad_snapshot.csv, season_replay.md
+|       `-- backtest/
+|-- docs/
+|   |-- README.md
+|   `-- FPL_101.md
+`-- .github/workflows/
+    |-- pipeline.yml
+    `-- season_replay.yml
 ```
 
 ---
@@ -384,35 +370,27 @@ pip install -r requirements.txt
 python src/main.py
 ```
 
-First run trains every artifact. Later runs reuse `data/*.json`, retrain only missing. Output → [data/processed/lineup.md](../data/processed/lineup.md). State → [data/processed/squad_snapshot.csv](../data/processed/squad_snapshot.csv).
+First run trains every missing artifact. Later runs reuse compatible `data/*.json` models and write [data/processed/lineup.md](../data/processed/lineup.md) + [data/processed/squad_snapshot.csv](../data/processed/squad_snapshot.csv).
 
 ### Recalibration
 
-Auto. `_maybe_recalibrate(...)` walk-forward-retrains when JSONs > `RECALIB_STALE_DAYS` (= 14) or missing. Auto-load via `predict_quantiles` / `predict_minutes`.
-
-Manual:
+Auto via `_maybe_recalibrate(...)` when recalibration JSONs are missing or older than `RECALIB_STALE_DAYS` (= 14). Useful commands:
 
 ```bash
-# Force refresh
 rm data/points_recalib.json data/minutes_recalib.json
 python src/main.py
 
-# Walk-forward CV
 python src/backtest.py --k 8
-
-# Refit (consumes backtest/*.csv)
 python src/recalibrate_points.py
 python src/recalibrate_minutes.py
-
-# Audit recalibrated minutes
 python src/backtest.py --k 8 --minutes-recalib data/minutes_recalib.json
 ```
 
 ### Scheduled
 
-[.github/workflows/pipeline.yml](../.github/workflows/pipeline.yml) runs 2×/day 05:30 + 17:30 UTC, 30 min after FPL-CI refresh. Idempotent — commits only when artifacts change. `concurrency: fpl-update` prevents overlap.
+[.github/workflows/pipeline.yml](../.github/workflows/pipeline.yml) runs 05:30 + 17:30 UTC, skips live/imminent GWs, and stops scheduled work once current-season GW38 is fully finished.
 
-[.github/workflows/season_replay.yml](../.github/workflows/season_replay.yml) auto-fires on pipeline success (`workflow_run`). Detects newly fully-finished GW from `fixtures.csv` — replays only when a complete event lands since last run. Manual `workflow_dispatch` always runs. Separate `concurrency: fpl-replay` group so it doesn't race with pipeline pushes; commit step `pull --rebase` retries on reject.
+[.github/workflows/season_replay.yml](../.github/workflows/season_replay.yml) auto-fires after successful pipeline runs, but only replays when `fixtures.csv` has a newly fully-finished GW beyond `data/season_replay.csv`. Manual `workflow_dispatch` still runs on demand.
 
 ---
 
@@ -473,12 +451,10 @@ python src/backtest.py --k 8 --minutes-recalib data/minutes_recalib.json
 
 ## Data + Credit
 
-All credit upstream → §11. Subject to provider terms. Public, read-only endpoints/files. Not affiliated with Premier League, ClubElo, FPL-Core-Insights.
+All credit upstream → §11. Public read-only endpoints/files; provider terms apply. Not affiliated with Premier League, ClubElo, FPL-Core-Insights.
 
 ---
 
 ## License
 
 TBD.
-
-> **Note:** FPL API, FPL-CI, ClubElo governed by separate terms.

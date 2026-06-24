@@ -63,42 +63,48 @@ jobs:
           # main where the pipeline just pushed fresh fixtures.csv.
           ref: main
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
       - name: Detect newly fully-finished GW
         id: gw
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
+          import csv
           import os
-          import pandas as pd
+          from pathlib import Path
 
           season = os.environ["SEASON"]
 
           # Fully-finished GW: max event N where ALL fixture rows with event==N
           # have finished=True. DGW = >10 fixtures for one event; BGW = <10.
           # Either way every row for that event must be finished.
-          fx = pd.read_csv("data/fixtures.csv", low_memory=False)
-          fx = fx[fx["season"].astype(str) == season]
-          fx["fin"] = fx["finished"].astype(str).str.lower().isin(("true", "1"))
-          by_event = fx.groupby("event")["fin"].all()
-          done_events = by_event[by_event].index.astype(int)
-          last_fin = int(done_events.max()) if len(done_events) else 0
+          fx_path = Path("data/fixtures.csv")
+          events = {}
+          if fx_path.exists():
+              with fx_path.open(newline="", encoding="utf-8") as fh:
+                  for row in csv.DictReader(fh):
+                      if str(row.get("season", "")) != season:
+                          continue
+                      try:
+                          event = int(float(row.get("event", "")))
+                      except (TypeError, ValueError):
+                          continue
+                      fin = str(row.get("finished", "")).strip().lower() in ("true", "1", "yes")
+                      events.setdefault(event, []).append(fin)
+
+          done_events = [gw for gw, flags in events.items() if flags and all(flags)]
+          last_fin = max(done_events) if done_events else 0
 
           # Last GW already replayed. CSV moved to data/ (state) — processed/
           # holds the human-readable md only.
-          try:
-              rp = pd.read_csv("data/season_replay.csv")
-              last_replayed = int(rp["gw"].max()) if not rp.empty else 0
-          except FileNotFoundError:
-              last_replayed = 0
+          rp_path = Path("data/season_replay.csv")
+          last_replayed = 0
+          if rp_path.exists():
+              with rp_path.open(newline="", encoding="utf-8") as fh:
+                  rows = list(csv.DictReader(fh))
+              if rows:
+                  try:
+                      last_replayed = max(int(float(r["gw"])) for r in rows if r.get("gw") not in ("", None))
+                  except (TypeError, ValueError):
+                      last_replayed = 0
 
           force = os.environ.get("FORCE", "false").lower() == "true"
           # Manual dispatch always runs — user explicitly clicked Run, the
@@ -113,6 +119,18 @@ jobs:
               f.write(f"last_replayed={last_replayed}\n")
               f.write(f"should_run={'true' if should_run else 'false'}\n")
           PY
+
+      - name: Set up Python
+        if: steps.gw.outputs.should_run == 'true'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        if: steps.gw.outputs.should_run == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Skip — no new finished GW
         if: steps.gw.outputs.should_run != 'true'
