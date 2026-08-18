@@ -307,17 +307,21 @@ class FPLEngine:
         self.bonus_models = load_bonus_models()
 
     def _latest_rolling(self) -> pd.DataFrame:
-        """Per-player most-recent current-season feature row. One row per player_id.
+        """Per-player most-recent inference baseline. One row per player_id.
 
-        Filter SEASON before tail(1). Stop historical-season rows becoming
-        inference baseline for player not yet appeared in current season.
+        Prefer current-season rows. Before GW1 has finalized, carry forward
+        each player's latest prior-season row so preseason projections exist.
         """
         fx = build_match_features(self.fixtures, self.history, self.teams)
         past = build_player_features(self.history, self.players, fx)
         if past.empty:
             return pd.DataFrame()
         if "season" in past.columns:
-            past = past[past["season"] == SEASON]
+            current = past[past["season"] == SEASON]
+            if current.empty:
+                past = past[past["season"] < SEASON]
+            else:
+                past = current
         if past.empty:
             return pd.DataFrame()
         return past.sort_values(["player_id", "round"]).groupby("player_id").tail(1).set_index("player_id")

@@ -84,6 +84,21 @@ class FinalizationTests(unittest.TestCase):
 
 
 class SeasonStateTests(unittest.TestCase):
+    def test_preseason_projection_uses_latest_prior_season_baseline(self) -> None:
+        import fpl_engine
+
+        engine = fpl_engine.FPLEngine.__new__(fpl_engine.FPLEngine)
+        engine.fixtures = engine.history = engine.players = engine.teams = pd.DataFrame()
+        past = pd.DataFrame([
+            {"player_id": 1, "season": "2024-2025", "round": 38, "value": 1},
+            {"player_id": 1, "season": "2025-2026", "round": 38, "value": 2},
+        ])
+        with patch.object(fpl_engine, "build_match_features",
+                          return_value=pd.DataFrame()), \
+             patch.object(fpl_engine, "build_player_features", return_value=past):
+            latest = engine._latest_rolling()
+        self.assertEqual(int(latest.loc[1, "value"]), 2)
+
     def test_walk_forward_split_is_season_aware(self) -> None:
         try:
             import backtest
