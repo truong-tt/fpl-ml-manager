@@ -48,7 +48,7 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 OUT_DIR = DATA_DIR / "processed"
 HORIZON = 8
 
-# FPL 2025/26 chip rules. Two of each chip per season; first half (GW1..19)
+# FPL 2026/27 chip rules. Two of each chip per season; first half (GW1..19)
 # uses set 1, second half (GW20..38) uses set 2. Set 1 expires at GW19 if
 # unused. FH cannot be played in consecutive GWs. TC = captain pts x3
 # (instead of x2). BB = bench pts also count.
@@ -92,16 +92,19 @@ def _filter_history(history: pd.DataFrame, season: str, before_gw: int) -> pd.Da
 def _last_finished_gw(fixtures: pd.DataFrame, season: str) -> int:
     """Max event N where EVERY fixture row with event==N is finished.
 
-    Strict "fully-finished" rule. Handles DGW (>10 fixtures for one event) and
-    BGW (<10) naturally. Must match the GW detection in
+    Strict finalized rule. Handles DGW (>10 fixtures for one event) and BGW
+    (<10) naturally. Must match the GW detection in
     .github/workflows/season_replay.yml — otherwise the workflow skips runs
     forever because the CSV's last_replayed gets pinned to a partial GW that
     the workflow never reaches with its stricter rule.
     """
-    fx = fixtures[fixtures.get("season", season) == season].copy()
+    fx = (fixtures[fixtures["season"] == season].copy()
+          if "season" in fixtures.columns else fixtures.copy())
     if fx.empty:
         return 0
     fx["fin"] = fx["finished"].astype(str).str.lower().isin(("true", "1"))
+    if "data_checked" in fx.columns:
+        fx["fin"] &= fx["data_checked"].astype(str).str.lower().isin(("true", "1"))
     by_event = fx.groupby("event")["fin"].all()
     done = by_event[by_event].index.astype(int)
     return int(done.max()) if len(done) else 0
@@ -385,6 +388,7 @@ def replay(start_gw: int = 1, end_gw: int | None = None,
         chip_tag = chip_choice.upper() if chip_choice else ""
 
         rows.append({
+            "season": season,
             "gw": G,
             "xi_pts": round(score["xi_pts"], 1),
             "cap_id": int(score["cap_id"]),
@@ -406,10 +410,9 @@ def replay(start_gw: int = 1, end_gw: int | None = None,
         # FH does not change the persistent squad / bank / FT.
         if not fh_active:
             prior_squad = squad_ids
-            # WC resets FT to 1 next GW (FPL rule). Otherwise standard banking.
-            if wc_active:
-                ft = 1
-            else:
+            # Wildcard preserves the previously banked FT count. A normal
+            # transfer week applies the usual banking/usage update.
+            if not wc_active:
                 ft = min(5, ft + 1) if n_in == 0 else 1
 
     return pd.DataFrame(rows)

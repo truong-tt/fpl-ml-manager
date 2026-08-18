@@ -11,12 +11,11 @@ permissions:
   contents: write
 
 env:
-  SEASON: '2025-2026'
-  SEASON_END_GW: '38'
+  SEASON: '2026-2027'
 
 # Avoid concurrent runs racing on git push if 05:30 run still in flight.
 concurrency:
-  group: fpl-update
+  group: fpl-data-writer
   cancel-in-progress: false
 
 jobs:
@@ -25,49 +24,18 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Detect completed season
       id: season_gate
-      run: |
-        python3 - <<'PY'
-        import csv
-        import os
-        from pathlib import Path
-
-        season = os.environ["SEASON"]
-        end_gw = int(os.environ["SEASON_END_GW"])
-        fixtures = Path("data/fixtures.csv")
-        last_fin = 0
-
-        if fixtures.exists():
-            events = {}
-            with fixtures.open(newline="", encoding="utf-8") as fh:
-                for row in csv.DictReader(fh):
-                    if str(row.get("season", "")) != season:
-                        continue
-                    try:
-                        event = int(float(row.get("event", "")))
-                    except (TypeError, ValueError):
-                        continue
-                    fin = str(row.get("finished", "")).strip().lower() in {"true", "1", "yes"}
-                    events.setdefault(event, []).append(fin)
-
-            done = [gw for gw, flags in events.items() if flags and all(flags)]
-            last_fin = max(done) if done else 0
-
-        season_done = last_fin >= end_gw
-        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-            fh.write(f"last_fin={last_fin}\n")
-            fh.write(f"season_done={'true' if season_done else 'false'}\n")
-        print(f"last_fin={last_fin} season_done={season_done}")
-        PY
+      run: python3 src/workflow_gate.py season
 
     - name: Set up Python
       if: ${{ steps.season_gate.outputs.season_done != 'true' }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v7
       with:
         python-version: '3.11'
+        cache: 'pip'
 
     - name: Install dependencies
       if: ${{ steps.season_gate.outputs.season_done != 'true' }}
@@ -85,48 +53,16 @@ jobs:
     - name: Detect completed season after refresh
       id: post_gate
       if: ${{ steps.season_gate.outputs.season_done != 'true' }}
-      run: |
-        python - <<'PY'
-        import csv
-        import os
-        from pathlib import Path
-
-        season = os.environ["SEASON"]
-        end_gw = int(os.environ["SEASON_END_GW"])
-        fixtures = Path("data/fixtures.csv")
-        last_fin = 0
-
-        if fixtures.exists():
-            events = {}
-            with fixtures.open(newline="", encoding="utf-8") as fh:
-                for row in csv.DictReader(fh):
-                    if str(row.get("season", "")) != season:
-                        continue
-                    try:
-                        event = int(float(row.get("event", "")))
-                    except (TypeError, ValueError):
-                        continue
-                    fin = str(row.get("finished", "")).strip().lower() in {"true", "1", "yes"}
-                    events.setdefault(event, []).append(fin)
-
-            done = [gw for gw, flags in events.items() if flags and all(flags)]
-            last_fin = max(done) if done else 0
-
-        season_done = last_fin >= end_gw
-        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-            fh.write(f"last_fin={last_fin}\n")
-            fh.write(f"season_done={'true' if season_done else 'false'}\n")
-        print(f"last_fin={last_fin} season_done={season_done}")
-        PY
+      run: python src/workflow_gate.py season
 
     - name: Publish lineup to Job Summary
-      if: ${{ steps.season_gate.outputs.season_done != 'true' && steps.post_gate.outputs.season_done != 'true' }}
+      if: ${{ steps.season_gate.outputs.season_done != 'true' && steps.post_gate.outputs.season_done != 'true' && steps.post_gate.outputs.review_pending != 'true' }}
       run: cat data/processed/lineup.md >> $GITHUB_STEP_SUMMARY
 
     - name: Commit and push changes
       if: ${{ steps.season_gate.outputs.season_done != 'true' }}
-      # Season Replay workflow uses a different concurrency group, so its push
-      # can land between our checkout and push. Rebase-and-retry on reject.
+      # Both data writers serialize on one concurrency group. Rebase-and-retry
+      # still protects against unrelated commits landing during the run.
       run: |
         set -e
         git config --global user.name "FPL Bot"

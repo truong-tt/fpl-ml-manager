@@ -128,7 +128,7 @@ FPL points: discrete, heavy-tailed, bimodal (DNP zero + wide when playing).
 | q50 | Median anchor → Swanson μ (§4.4) |
 | q90 | TC timing, spread |
 
-**Per-position** boosters — 4 × 3 = 12 — `reg:quantileerror`, $\alpha \in \{0.10, 0.50, 0.90\}$. Pinball loss from [Koenker & Bassett][ref-koenker]. Target: raw `total_points` (minus bonus, see §4.8). Subsumes goals, assists, CS, BPS, deductions jointly. No hand-coded scoring table.
+**Per-position** boosters — 4 × 3 = 12 — `reg:quantileerror`, $\alpha \in \{0.10, 0.50, 0.90\}$. Pinball loss from [Koenker & Bassett][ref-koenker]. Target: official `total_points` (minus bonus, see §4.8). Subsumes goals, assists, CS, defensive contributions, BPS and deductions jointly; there is no hand-coded scoring table. Points and bonus labels are limited to 2025/26 onward so the pre-defensive-contribution scoring regime cannot dilute the current target.
 
 Per-position to break population-mean trap — scoring distributions differ structurally (GK saves, DEF CS, MID score+assist, FWD convert). Trade-off: ~3k rows/FWD subset, q90 outlier-sensitive. Regularization: `max_depth=3`, `min_child_weight=30`, `reg_alpha=0.5`, `reg_lambda=2.0` + sanity clip at 25 (credible boom: hat-trick + assist + bonus).
 
@@ -191,6 +191,8 @@ Per-position monotone isotonic map on raw minutes/90 booster. Fit on walk-forwar
 ### 4.8 Bonus head (variance-additive combine)
 
 [src/train_bonus_model.py](../src/train_bonus_model.py). Bonus ∈ {0,1,2,3} = top-3 BPS scorers per match. Three quantile boosters (`reg:quantileerror`, $\alpha \in \{0.10, 0.50, 0.90\}$), single shared model (sparse target), trained on `minutes > 0` rows (DNP bonus = 0 by definition; filter prevents q-collapse toward 0). Points head trained on `total_points - bonus` in [src/features.py](../src/features.py) → no double-count.
+
+For 2026/27, official `bps` and `bonus` fields remain the source of truth for the revised BPS weights. `data/model_state.json` records the season and latest finalized GW; all heads retrain once when that marker advances, allowing the bonus model to absorb finalized 2026/27 outcomes without rebuilding a partial Opta rules engine.
 
 Engine combines the points + bonus heads at the moment level rather than by summing quantiles. Linear quantile addition is statistically invalid for independent components — $q_\alpha(X+Y) \neq q_\alpha(X) + q_\alpha(Y)$, and the latter over-states $q_{90}$ by up to $\sqrt{2}$ in the equal-variance limit, biasing $\kappa$ toward high-bonus-history archetypes whose true joint upside is lower. Pearson–Tukey gives per-row $(\mu_p, \sigma_p)$, $(\mu_b, \sigma_b)$; under independence the combined distribution has
 
@@ -279,7 +281,7 @@ Only $t_0$ executed: `transfers_in/out`, `xi_ids`, `captain`, `vice`, `hits`. Ne
 
 [src/chips.py](../src/chips.py). Greedy post-processing over projection frame — MILP doesn't see chip activation directly.
 
-**2025/26 rules**: 8 chips, two of each. Set 1 (TC1/BB1/FH1/WC1) expires GW19. Set 2 GW20+. TC × 3. FH no consecutive GWs. WC + FH preserve banked transfers.
+**2026/27 rules**: 8 chips, two of each. Set 1 (TC1/BB1/FH1/WC1) expires GW19. Set 2 GW20+. TC × 3. FH no consecutive GWs. WC + FH preserve banked transfers.
 
 | Chip | Heuristic |
 | --- | --- |
@@ -298,7 +300,7 @@ Only $t_0$ executed: `transfers_in/out`, `xi_ids`, `captain`, `vice`, `hits`. Ne
 
 ### 7.1 Walk-forward CV
 
-Per holdout GW $G$: retrain on `round < G`, predict `round = G`. Rolling features shift-1 → frame built once on full history leakage-free as long as `round ≥ G` excluded from training. Split by `round` post-construction, not rebuild per holdout.
+For a selected season and holdout GW $G$: train on every prior season plus rows from the selected season where `round < G`; test only the selected season at `round = G`. Rolling features shift-1 → frame built once on full history leakage-free as long as future selected-season rows are excluded from training. Split post-construction rather than rebuilding per holdout.
 
 ### 7.2 Points calibration
 
@@ -333,11 +335,11 @@ fpl-ml-manager/
 |   |-- chips.py                 # TC/BB/FH/WC heuristics
 |   |-- backtest.py, calibration.py
 |   |-- recalibrate_*.py
-|   `-- league_table.py, fit_team_rho.py, season_replay.py
+|   `-- league_table.py, fit_team_rho.py, season_replay.py, workflow_gate.py
 |-- data/
 |   |-- players.csv, teams.csv, fixtures.csv, history.csv
 |   |-- cup_fixtures.csv, fixture_lambdas.csv, team_rho.json
-|   |-- xgb_*.json, points_recalib.json, minutes_recalib.json
+|   |-- xgb_*.json, model_state.json, points_recalib.json, minutes_recalib.json
 |   |-- season_replay.csv
 |   `-- processed/
 |       |-- lineup.md, squad_snapshot.csv, season_replay.md
@@ -388,9 +390,9 @@ python src/backtest.py --k 8 --minutes-recalib data/minutes_recalib.json
 
 ### Scheduled
 
-[.github/workflows/pipeline.yml](../.github/workflows/pipeline.yml) runs 05:30 + 17:30 UTC, skips live/imminent GWs, and stops scheduled work once current-season GW38 is fully finished.
+[.github/workflows/pipeline.yml](../.github/workflows/pipeline.yml) runs 05:30 + 17:30 UTC, skips live/imminent GWs, defers model/lineup work while scores await official `data_checked` review, and stops once current-season GW38 is finalized.
 
-[.github/workflows/season_replay.yml](../.github/workflows/season_replay.yml) auto-fires after successful pipeline runs, but only replays when `fixtures.csv` has a newly fully-finished GW beyond `data/season_replay.csv`. Manual `workflow_dispatch` still runs on demand.
+[.github/workflows/season_replay.yml](../.github/workflows/season_replay.yml) auto-fires after successful pipeline runs, but only replays when `fixtures.csv` has a newly finalized GW beyond the same-season rows in `data/season_replay.csv`. Both writers share one concurrency group; manual `workflow_dispatch` still runs on demand.
 
 ---
 

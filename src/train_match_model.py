@@ -18,7 +18,10 @@ def train_match_models(
 ) -> None:
     """Train + serialize home / away goal Poisson regressors."""
     df = build_match_features(fixtures, history, teams)
-    past = df[df["finished"] == True].dropna(subset=["team_h_score", "team_a_score"])
+    finalized = df["finished"].astype(str).str.lower().isin(("true", "1"))
+    if "data_checked" in df.columns:
+        finalized &= df["data_checked"].astype(str).str.lower().isin(("true", "1"))
+    past = df[finalized].dropna(subset=["team_h_score", "team_a_score"])
     if past.empty:
         return
     X = past[match_feature_cols()].astype(float)

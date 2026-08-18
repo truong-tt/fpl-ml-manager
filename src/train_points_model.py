@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import xgboost as xgb
 
+from data_loader import SCORING_REGIME_START
 from features import build_match_features, build_player_features, points_feature_cols
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -77,6 +78,8 @@ def train_points_models() -> None:
 
     fixture_feats = build_match_features(fx, hist, teams)
     train = build_player_features(hist, players, fixture_feats).dropna(subset=["target"])
+    if "season" in train.columns:
+        train = train[train["season"] >= SCORING_REGIME_START]
     if "minutes" in train.columns:
         train = train[train["minutes"] > 0]
     if train.empty:

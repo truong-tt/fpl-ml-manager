@@ -1,8 +1,9 @@
 """FPL data loader. Multi-season ingest from FPL-Core-Insights + live FPL API price overlay.
 
-Current season: By-Gameweek slicing. Historical seasons: entity-folder layout
-(2024-2025+). Per-GW deltas reconstructed from cumulative playerstats.csv plus
-per-match playermatchstats.csv joined to matches.csv for GW attribution.
+Current season: By-Gameweek slicing. Historical seasons are auto-detected as
+either the same per-Gameweek archive layout (2025-2026+) or the legacy entity
+layout (2024-2025). Legacy per-GW deltas are reconstructed from cumulative
+playerstats.csv plus playermatchstats.csv joined to matches.csv.
 
 Cross-season joins stable on FPL player_code + team.code. Players/teams absent
 from current season pool (left PL, relegated) dropped from history.
@@ -22,8 +23,9 @@ import requests
 # https://github.com/olbauday/FPL-Core-Insights. Refresh 2x/day, 05:00 / 17:00 UTC.
 FPL_CI_REF = "main"
 FPL_CI_BASE = f"https://raw.githubusercontent.com/olbauday/FPL-Core-Insights/{FPL_CI_REF}/data"
-SEASON = "2025-2026"
-HISTORICAL_SEASONS: list[str] = ["2024-2025"]
+SEASON = "2026-2027"
+SCORING_REGIME_START = "2025-2026"
+HISTORICAL_SEASONS: list[str] = ["2024-2025", "2025-2026"]
 ALL_SEASONS = HISTORICAL_SEASONS + [SEASON]
 
 FPL_API_BASE = "https://fantasy.premierleague.com/api/"
@@ -120,9 +122,11 @@ def _fetch_csv(rel_path: str, cache: bool = True, retries: int = 3) -> Optional[
     return None
 
 
-def _fetch_gw_csv(gw: int, filename: str, cache_history: bool) -> Optional[pd.DataFrame]:
+def _fetch_gw_csv(
+    gw: int, filename: str, cache_history: bool, season: str = SEASON
+) -> Optional[pd.DataFrame]:
     """Per-GW fetch. cache_history=False forces re-fetch for current/future GWs."""
-    rel = f"{SEASON}/By Gameweek/GW{gw}/{filename}"
+    rel = f"{season}/By Gameweek/GW{gw}/{filename}"
     if not cache_history:
         cache_path = CACHE_DIR / rel
         if cache_path.exists():
@@ -130,20 +134,31 @@ def _fetch_gw_csv(gw: int, filename: str, cache_history: bool) -> Optional[pd.Da
     return _fetch_csv(rel, cache=cache_history)
 
 
-def _discover_gw_bounds() -> tuple[int, int]:
-    """Return (current_gw, max_gw). Read gameweek_summaries. Probe if absent."""
+def _discover_gw_bounds() -> tuple[int, int, pd.DataFrame]:
+    """Return current/max GW and the official finalization summary."""
     summary = _fetch_csv(f"{SEASON}/gameweek_summaries.csv", cache=False)
     if summary is not None and "is_current" in summary.columns:
-        cur_rows = summary[summary["is_current"].astype(str) == "True"]
+        cur_rows = summary[summary["is_current"].astype(str).str.lower() == "true"]
         cur = int(cur_rows["id"].iloc[0]) if not cur_rows.empty else 1
         max_gw = int(summary["id"].max())
-        return cur, max_gw
+        return cur, max_gw, summary
     cur = 1
     for gw in range(1, 39):
         if _fetch_gw_csv(gw, "fixtures.csv", cache_history=True) is None:
             break
         cur = gw
-    return cur, cur
+    return cur, cur, pd.DataFrame()
+
+
+def finalized_gws(summary: pd.DataFrame) -> list[int]:
+    """Gameweeks whose official post-match review is complete."""
+    if summary.empty or not {"id", "data_checked"}.issubset(summary.columns):
+        return []
+    checked = summary["data_checked"].astype(str).str.lower() == "true"
+    if "finished" in summary.columns:
+        checked &= summary["finished"].astype(str).str.lower() == "true"
+    return sorted(pd.to_numeric(summary.loc[checked, "id"], errors="coerce")
+                  .dropna().astype(int).tolist())
 
 
 def _build_teams() -> pd.DataFrame:
@@ -152,7 +167,7 @@ def _build_teams() -> pd.DataFrame:
     if src is None or src.empty:
         raise RuntimeError("FPL-CI teams.csv unavailable")
     out = src.rename(columns={"id": "team_id", "name": "team_name"})
-    required = ["team_id", "team_name", "short_name", "strength",
+    required = ["team_id", "team_name", "short_name", "code", "strength",
                 "strength_overall_home", "strength_overall_away"]
     missing = [c for c in required if c not in out.columns]
     if missing:
@@ -175,7 +190,8 @@ def _normalize_fixture_columns(raw: pd.DataFrame, code_to_id: dict[int, int]) ->
 
 
 def _build_fixtures_current(
-    current_gw: int, max_gw: int, code_to_id: dict[int, int]
+    current_gw: int, max_gw: int, code_to_id: dict[int, int],
+    summary: pd.DataFrame,
 ) -> pd.DataFrame:
     """Concat current-season per-GW fixtures into one frame. Filter to PL."""
     parts: list[pd.DataFrame] = []
@@ -190,20 +206,36 @@ def _build_fixtures_current(
         raw = raw[raw["tournament"].astype(str).str.lower() == "prem"].copy()
     raw = _normalize_fixture_columns(raw, code_to_id)
     raw["season"] = SEASON
+    checked = {}
+    if not summary.empty and {"id", "data_checked"}.issubset(summary.columns):
+        checked = dict(zip(summary["id"].astype(int),
+                           summary["data_checked"].astype(str).str.lower() == "true"))
+    raw["data_checked"] = raw["gameweek"].map(checked).fillna(False).astype(bool)
     return raw
 
 
 def _build_fixtures_historical(
     season: str, code_to_id: dict[int, int]
 ) -> pd.DataFrame:
-    """Load <season>/matches/matches.csv. Remap team codes → current team_ids. Drop non-PL."""
+    """Load either legacy entity files or the newer per-GW archive."""
     raw = _fetch_csv(f"{season}/matches/matches.csv", cache=True)
     if raw is None or raw.empty:
-        return pd.DataFrame()
+        summary = _fetch_csv(f"{season}/gameweek_summaries.csv", cache=True)
+        if summary is None or summary.empty:
+            return pd.DataFrame()
+        parts = []
+        for gw in range(1, int(summary["id"].max()) + 1):
+            df = _fetch_gw_csv(gw, "fixtures.csv", cache_history=True, season=season)
+            if df is not None and not df.empty:
+                parts.append(df)
+        if not parts:
+            return pd.DataFrame()
+        raw = pd.concat(parts, ignore_index=True)
     if "tournament" in raw.columns:
         raw = raw[raw["tournament"].astype(str).str.lower() == "prem"].copy()
     raw = _normalize_fixture_columns(raw, code_to_id)
     raw["season"] = season
+    raw["data_checked"] = True
     return raw
 
 
@@ -219,7 +251,7 @@ def _assign_global_fixture_ids(fixtures: pd.DataFrame) -> tuple[pd.DataFrame, di
         "away_score": "team_a_score",
     }
     fx = fx.rename(columns=rename)
-    keep_first = ["id", "season", "event", "finished", "kickoff_time",
+    keep_first = ["id", "season", "event", "finished", "data_checked", "kickoff_time",
                   "team_h", "team_a", "team_h_score", "team_a_score", "match_id"]
     extras = [c for c in fx.columns if c not in keep_first
               and (c.startswith("home_") or c.startswith("away_")
@@ -350,13 +382,13 @@ def _overlay_live_fpl_api(players: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index()
 
 
-def _build_opta_per_gw_current(current_gw: int) -> pd.DataFrame:
-    """Aggregate current-season per-match Opta → per-(player, round) sums. DGWs add."""
+def _build_opta_per_gw(season: str, gws: list[int]) -> pd.DataFrame:
+    """Aggregate per-match Opta → per-(player, round) sums. DGWs add."""
     parts: list[pd.DataFrame] = []
     src_cols = list(OPTA_PM_COLS.keys())
-    for gw in range(1, current_gw + 1):
+    for gw in gws:
         df = _fetch_gw_csv(gw, "playermatchstats.csv",
-                           cache_history=(gw < current_gw))
+                           cache_history=(season != SEASON), season=season)
         if df is None or df.empty:
             continue
         avail = [c for c in src_cols if c in df.columns]
@@ -433,16 +465,16 @@ def _build_cup_fixtures(
 
 
 def _build_history_current(
-    current_gw: int,
+    finalized_gws: list[int],
     players: pd.DataFrame,
     fixture_lookup: dict[tuple[int, int, str], int],
     fixtures: pd.DataFrame,
 ) -> pd.DataFrame:
     """Concat current-season per-GW player_gameweek_stats.csv. Tag season."""
     parts: list[pd.DataFrame] = []
-    for gw in range(1, current_gw + 1):
+    for gw in finalized_gws:
         df = _fetch_gw_csv(gw, "player_gameweek_stats.csv",
-                           cache_history=(gw < current_gw))
+                           cache_history=True)
         if df is not None and not df.empty:
             d = df.copy()
             d["round"] = gw
@@ -450,7 +482,10 @@ def _build_history_current(
     if not parts:
         return pd.DataFrame(columns=HIST_OUTPUT_COLS)
     hist = pd.concat(parts, ignore_index=True)
-    hist = hist.rename(columns={"id": "player_id"})
+    if "player_id" not in hist.columns:
+        if "id" not in hist.columns:
+            raise RuntimeError("player_gameweek_stats.csv missing player id")
+        hist = hist.rename(columns={"id": "player_id"})
 
     pteam = players.set_index("id")["team"].to_dict()
     team_series = hist["player_id"].map(pteam)
@@ -469,7 +504,7 @@ def _build_history_current(
         for f, t in zip(hist["fixture"], hist["team"])
     ]
 
-    opta = _build_opta_per_gw_current(current_gw)
+    opta = _build_opta_per_gw(SEASON, finalized_gws)
     if not opta.empty:
         hist = hist.merge(opta, on=["player_id", "round"], how="left")
         for c in OPTA_PM_COLS.values():
@@ -479,6 +514,97 @@ def _build_history_current(
     hist = _num(hist, HIST_NUM)
     cols = [c for c in HIST_OUTPUT_COLS if c in hist.columns]
     return hist[cols]
+
+
+def _build_history_per_gw_archive(
+    season: str,
+    players_current: pd.DataFrame,
+    teams_current: pd.DataFrame,
+    fixture_lookup: dict[tuple[int, int, str], int],
+    fixtures: pd.DataFrame,
+) -> pd.DataFrame:
+    """Load newer finished seasons stored as one snapshot per Gameweek."""
+    base = _fetch_csv(f"{season}/players.csv", cache=True)
+    summary = _fetch_csv(f"{season}/gameweek_summaries.csv", cache=True)
+    if base is None or base.empty or summary is None or summary.empty:
+        return pd.DataFrame(columns=HIST_OUTPUT_COLS)
+
+    gws = sorted(pd.to_numeric(summary["id"], errors="coerce").dropna().astype(int).tolist())
+    parts: list[pd.DataFrame] = []
+    for gw in gws:
+        df = _fetch_gw_csv(gw, "player_gameweek_stats.csv",
+                           cache_history=True, season=season)
+        if df is not None and not df.empty:
+            d = df.copy()
+            d["round"] = gw
+            snapshot = _fetch_gw_csv(gw, "players.csv",
+                                     cache_history=True, season=season)
+            if (snapshot is not None and not snapshot.empty
+                    and {"player_code", "team_code"}.issubset(snapshot.columns)):
+                snap_id = "player_id" if "player_id" in snapshot.columns else "id"
+                stat_id = "id" if "id" in d.columns else "player_id"
+                if snap_id in snapshot.columns and stat_id in d.columns:
+                    snap = snapshot.set_index(snap_id)
+                    d["_player_code_snapshot"] = d[stat_id].map(snap["player_code"])
+                    d["_team_code_snapshot"] = d[stat_id].map(snap["team_code"])
+            parts.append(d)
+    if not parts:
+        return pd.DataFrame(columns=HIST_OUTPUT_COLS)
+
+    base_id_col = "player_id" if "player_id" in base.columns else "id"
+    code_to_current_pid = dict(zip(
+        players_current["code"].astype(int), players_current["id"].astype(int)
+    ))
+    local_to_code = dict(zip(base[base_id_col].astype(int), base["player_code"].astype(int)))
+    local_to_team_code = dict(zip(base[base_id_col].astype(int), base["team_code"].astype(int)))
+    code_to_current_tid = dict(zip(
+        teams_current["code"].astype(int), teams_current["team_id"].astype(int)
+    ))
+
+    hist = pd.concat(parts, ignore_index=True)
+    local_id_col = "id" if "id" in hist.columns else "player_id"
+    if local_id_col not in hist.columns:
+        raise RuntimeError("historical player_gameweek_stats.csv missing player id")
+    hist = hist.rename(columns={local_id_col: "player_id_local"})
+    snapshot_player_code = hist.get("_player_code_snapshot")
+    hist["player_code"] = hist["player_id_local"].astype(int).map(local_to_code)
+    if snapshot_player_code is not None:
+        hist["player_code"] = snapshot_player_code.fillna(hist["player_code"])
+    hist["player_id"] = hist["player_code"].map(code_to_current_pid)
+    snapshot_team_code = hist.get("_team_code_snapshot")
+    hist["team_code_hist"] = hist["player_id_local"].astype(int).map(local_to_team_code)
+    if snapshot_team_code is not None:
+        hist["team_code_hist"] = snapshot_team_code.fillna(hist["team_code_hist"])
+    hist["team"] = hist["team_code_hist"].map(code_to_current_tid)
+    hist = hist.dropna(subset=["player_id", "team"]).copy()
+    hist["player_id"] = hist["player_id"].astype(int)
+    hist["team"] = hist["team"].astype(int)
+    hist["season"] = season
+    hist["fixture"] = [
+        fixture_lookup.get((int(t), int(r), season), 0)
+        for t, r in zip(hist["team"], hist["round"])
+    ]
+    fix_idx = fixtures.set_index("id")
+    hist["opponent_team"] = [
+        (int(fix_idx.at[f, "team_a"])
+         if f in fix_idx.index and int(fix_idx.at[f, "team_h"]) == int(t)
+         else (int(fix_idx.at[f, "team_h"]) if f in fix_idx.index else 0))
+        for f, t in zip(hist["fixture"], hist["team"])
+    ]
+
+    opta = _build_opta_per_gw(season, gws)
+    if not opta.empty:
+        opta["player_id"] = (opta["player_id"].astype(int).map(local_to_code)
+                             .map(code_to_current_pid))
+        opta = opta.dropna(subset=["player_id"]).copy()
+        opta["player_id"] = opta["player_id"].astype(int)
+        hist = hist.merge(opta, on=["player_id", "round"], how="left")
+
+    for c in HIST_OUTPUT_COLS:
+        if c not in hist.columns:
+            hist[c] = 0.0
+    hist = _num(hist, HIST_NUM)
+    return hist[HIST_OUTPUT_COLS]
 
 
 def _build_history_historical(
@@ -498,6 +624,12 @@ def _build_history_historical(
     5. Remap team_id (season-local) → current team_id via team_code.
     6. Drop rows for players/teams not in current pool (left PL, relegated).
     """
+    per_gw = _build_history_per_gw_archive(
+        season, players_current, teams_current, fixture_lookup, fixtures
+    )
+    if not per_gw.empty:
+        return per_gw
+
     base = _fetch_csv(f"{season}/players/players.csv", cache=True)
     pstats = _fetch_csv(f"{season}/playerstats/playerstats.csv", cache=True)
     pms = _fetch_csv(f"{season}/playermatchstats/playermatchstats.csv", cache=True)
@@ -641,15 +773,16 @@ def _build_history_historical(
 
 def main() -> None:
     """Refresh players / teams / fixtures / history CSVs under data/ across all seasons."""
-    current_gw, max_gw = _discover_gw_bounds()
+    current_gw, max_gw, summary = _discover_gw_bounds()
+    checked_gws = finalized_gws(summary)
     print(f"[data_loader] current_gw={current_gw} max_gw={max_gw} season={SEASON} "
-          f"historical={HISTORICAL_SEASONS}")
+          f"finalized_through={max(checked_gws, default=0)} historical={HISTORICAL_SEASONS}")
 
     teams = _build_teams()
     code_to_id = dict(zip(teams["code"].astype(int), teams["team_id"].astype(int)))
 
     # Phase 1. Fixtures across all seasons → global ids, season-aware lookup.
-    fx_curr = _build_fixtures_current(current_gw, max_gw, code_to_id)
+    fx_curr = _build_fixtures_current(current_gw, max_gw, code_to_id, summary)
     fx_curr = _overlay_live_fpl_fixtures(fx_curr)
     fx_parts: list[pd.DataFrame] = [fx_curr]
     for s in HISTORICAL_SEASONS:
@@ -665,7 +798,7 @@ def main() -> None:
 
     # Phase 3. History across all seasons.
     h_parts: list[pd.DataFrame] = [
-        _build_history_current(current_gw, players, fixture_lookup, fixtures)
+        _build_history_current(checked_gws, players, fixture_lookup, fixtures)
     ]
     for s in HISTORICAL_SEASONS:
         h_h = _build_history_historical(s, players, teams, fixture_lookup, fixtures)

@@ -8,10 +8,8 @@ flat q90 ceiling on bonus-heavy archetypes (CS+block defender lands closer to
 population mean).
 
 Separate quantile booster on bonus directly preserves discrete 0/1/2/3 mass +
-asymmetric tail. Engine sums onto points quantiles with damping factor
-(BONUS_BLEND in fpl_engine.py) — full additivity double-counts partial bonus
-already inside points head. Future cleanup: retrain points head on
-`total_points - bonus` to remove double count entirely (Future Work).
+asymmetric tail. The points head targets `total_points - bonus`; the engine
+combines both heads at the moment level.
 
 Single shared model. Pos one-hots in points_feature_cols + bonus dist sparse →
 splitting into 4 per-pos heads shrinks each subset below regularization budget.
@@ -23,6 +21,7 @@ from pathlib import Path
 import pandas as pd
 import xgboost as xgb
 
+from data_loader import SCORING_REGIME_START
 from features import (build_match_features, build_player_features,
                       points_feature_cols)
 from train_points_model import _monotone_constraints
@@ -53,6 +52,8 @@ def train_bonus_model() -> None:
 
     fixture_feats = build_match_features(fx, hist, teams)
     train = build_player_features(hist, players, fixture_feats)
+    if "season" in train.columns:
+        train = train[train["season"] >= SCORING_REGIME_START]
     if train.empty or "bonus" not in hist.columns:
         return
     if "bonus" not in train.columns:

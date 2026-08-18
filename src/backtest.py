@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 
+from data_loader import SCORING_REGIME_START, SEASON
 from features import (build_match_features, build_player_features,
                       match_feature_cols, minutes_feature_cols,
                       points_feature_cols)
@@ -46,21 +47,36 @@ MINUTES_GIVEN_PARAMS = dict(objective="reg:logistic", learning_rate=0.05, max_de
 MINUTES_ROUNDS = 300
 
 
-def _finished_gws(fixtures: pd.DataFrame) -> list[int]:
-    fin = fixtures["finished"].astype(str).str.lower().isin(["true", "1"])
-    g = fixtures.assign(_fin=fin).groupby("event")["_fin"].agg(["sum", "size"])
+def _finished_gws(fixtures: pd.DataFrame, season: str = SEASON) -> list[int]:
+    fx = fixtures[fixtures["season"] == season].copy() if "season" in fixtures else fixtures.copy()
+    fin = fx["finished"].astype(str).str.lower().isin(["true", "1"])
+    if "data_checked" in fx.columns:
+        fin &= fx["data_checked"].astype(str).str.lower().isin(["true", "1"])
+    g = fx.assign(_fin=fin).groupby("event")["_fin"].agg(["sum", "size"])
     full = g[g["sum"] == g["size"]].index.astype(int).tolist()
     return sorted(full)
 
 
 def _resolve_holdout(fixtures: pd.DataFrame, k: int,
-                     start: int | None, end: int | None) -> list[int]:
-    finished = _finished_gws(fixtures)
+                     start: int | None, end: int | None,
+                     season: str = SEASON) -> list[int]:
+    finished = _finished_gws(fixtures, season)
     if not finished:
         raise RuntimeError("no fully finished GWs available for backtest")
     if start is not None and end is not None:
         return [g for g in finished if start <= g <= end]
     return finished[-k:]
+
+
+def _season_split(df: pd.DataFrame, season: str, gw: int,
+                  round_col: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Prior seasons + earlier current GWs train; one current GW tests."""
+    if "season" not in df.columns:
+        return df[df[round_col] < gw], df[df[round_col] == gw]
+    train = df[(df["season"] < season)
+               | ((df["season"] == season) & (df[round_col] < gw))]
+    test = df[(df["season"] == season) & (df[round_col] == gw)]
+    return train, test
 
 
 def _train_points_for_holdout(train: pd.DataFrame, feat_cols: list[str]
@@ -157,7 +173,8 @@ def _predict_bonus(models: dict[float, xgb.Booster], test: pd.DataFrame,
 def walk_forward_points(holdout_gws: list[int], history: pd.DataFrame,
                         fixtures: pd.DataFrame, players: pd.DataFrame,
                         teams: pd.DataFrame,
-                        recalib: dict | None = None) -> pd.DataFrame:
+                        recalib: dict | None = None,
+                        season: str = SEASON) -> pd.DataFrame:
     """Per holdout GW, train on round < G, predict round == G.
 
     Long frame: gw, player_id, pos_id, q10_pred, q50_pred, q90_pred, y.
@@ -181,10 +198,11 @@ def walk_forward_points(holdout_gws: list[int], history: pd.DataFrame,
     has_minutes = "minutes" in all_feats.columns
     has_bonus = "bonus" in all_feats.columns
     for gw in holdout_gws:
-        train = all_feats[all_feats["round"] < gw]
+        train, test = _season_split(all_feats, season, gw, "round")
+        if "season" in train.columns:
+            train = train[train["season"] >= SCORING_REGIME_START]
         if has_minutes:
             train = train[train["minutes"] > 0]
-        test = all_feats[all_feats["round"] == gw]
         if train.empty or test.empty:
             continue
         models = _train_points_for_holdout(train, feat_cols)
@@ -207,7 +225,8 @@ def walk_forward_points(holdout_gws: list[int], history: pd.DataFrame,
 
 
 def walk_forward_match(holdout_gws: list[int], fixtures: pd.DataFrame,
-                       history: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
+                       history: pd.DataFrame, teams: pd.DataFrame,
+                       season: str = SEASON) -> pd.DataFrame:
     """Per holdout GW, train Poisson home/away on event < G, predict event == G.
 
     Return: gw, fixture_id, team_h, team_a, lambda_h, lambda_a, gh, ga, cs_h_p,
@@ -215,14 +234,15 @@ def walk_forward_match(holdout_gws: list[int], fixtures: pd.DataFrame,
     """
     df = build_match_features(fixtures, history, teams)
     fin = df["finished"].astype(str).str.lower().isin(["true", "1"])
+    if "data_checked" in df.columns:
+        fin &= df["data_checked"].astype(str).str.lower().isin(["true", "1"])
     past = df[fin].dropna(subset=["team_h_score", "team_a_score"])
     if past.empty:
         return pd.DataFrame()
     feat_cols = match_feature_cols()
     chunks: list[pd.DataFrame] = []
     for gw in holdout_gws:
-        train = past[past["event"] < gw]
-        test = past[past["event"] == gw]
+        train, test = _season_split(past, season, gw, "event")
         if train.empty or test.empty:
             continue
         Xtr = train[feat_cols].astype(float)
@@ -260,7 +280,8 @@ def walk_forward_match(holdout_gws: list[int], fixtures: pd.DataFrame,
 def walk_forward_minutes(holdout_gws: list[int], history: pd.DataFrame,
                          fixtures: pd.DataFrame, players: pd.DataFrame,
                          teams: pd.DataFrame,
-                         recalib: dict | None = None) -> pd.DataFrame:
+                         recalib: dict | None = None,
+                         season: str = SEASON) -> pd.DataFrame:
     """Per holdout GW G, train two-stage minutes head on round < G. Predict G.
 
     Long frame: gw, player_id, pos_id, plays_pred, mins_when_played_pred,
@@ -279,8 +300,7 @@ def walk_forward_minutes(holdout_gws: list[int], history: pd.DataFrame,
 
     chunks: list[pd.DataFrame] = []
     for gw in holdout_gws:
-        train = all_feats[all_feats["round"] < gw]
-        test = all_feats[all_feats["round"] == gw]
+        train, test = _season_split(all_feats, season, gw, "round")
         if train.empty or test.empty:
             continue
         Xtr = train[feat_cols].astype(float).fillna(0.0)
@@ -331,6 +351,7 @@ def _parse_args() -> argparse.Namespace:
                    help="Trailing finished GWs to hold out. Default 5")
     p.add_argument("--start", type=int, default=None, help="Holdout start GW. Inclusive")
     p.add_argument("--end", type=int, default=None, help="Holdout end GW. Inclusive")
+    p.add_argument("--season", default=SEASON, help="Season label to hold out")
     p.add_argument("--skip-points", action="store_true", help="Skip points walk-forward")
     p.add_argument("--skip-match", action="store_true", help="Skip match walk-forward")
     p.add_argument("--skip-minutes", action="store_true", help="Skip minutes walk-forward")
@@ -349,7 +370,7 @@ def main() -> None:
     history = pd.read_csv(DATA_DIR / "history.csv")
     players = pd.read_csv(DATA_DIR / "players.csv")
     teams = pd.read_csv(DATA_DIR / "teams.csv")
-    holdout = _resolve_holdout(fixtures, args.k, args.start, args.end)
+    holdout = _resolve_holdout(fixtures, args.k, args.start, args.end, args.season)
     if not holdout:
         raise RuntimeError("no holdout GWs resolved")
     print(f"holdout GWs: {holdout}")
@@ -376,14 +397,15 @@ def main() -> None:
     if not args.skip_points:
         print("walk-forward points...")
         points_pred = walk_forward_points(holdout, history, fixtures, players, teams,
-                                          recalib=recalib)
+                                          recalib=recalib, season=args.season)
         if not points_pred.empty:
             points_pred.to_csv(OUT_DIR / "points_pred.csv", index=False)
             print(f"  saved {len(points_pred)} rows -> points_pred.csv")
 
     if not args.skip_match:
         print("walk-forward match...")
-        match_pred = walk_forward_match(holdout, fixtures, history, teams)
+        match_pred = walk_forward_match(holdout, fixtures, history, teams,
+                                        season=args.season)
         if not match_pred.empty:
             match_pred.to_csv(OUT_DIR / "match_pred.csv", index=False)
             print(f"  saved {len(match_pred)} rows -> match_pred.csv")
@@ -391,7 +413,7 @@ def main() -> None:
     if not args.skip_minutes:
         print("walk-forward minutes...")
         minutes_pred = walk_forward_minutes(holdout, history, fixtures, players, teams,
-                                            recalib=minutes_recalib)
+                                            recalib=minutes_recalib, season=args.season)
         if not minutes_pred.empty:
             minutes_pred.to_csv(OUT_DIR / "minutes_pred.csv", index=False)
             print(f"  saved {len(minutes_pred)} rows -> minutes_pred.csv")

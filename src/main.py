@@ -1,6 +1,7 @@
 """GH Actions entrypoint. Refresh data, train missing models, solve, write lineup.md."""
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
@@ -36,6 +37,7 @@ RECALIB_STALE_DAYS = 14
 RECALIB_HOLDOUT_K = 8
 POINTS_RECALIB_PATH = DATA_DIR / "points_recalib.json"
 MINUTES_RECALIB_PATH = DATA_DIR / "minutes_recalib.json"
+MODEL_STATE_PATH = DATA_DIR / "model_state.json"
 
 
 def _md_table(df: pd.DataFrame) -> str:
@@ -58,20 +60,33 @@ def _current_gw(fixtures: pd.DataFrame) -> int:
 
 
 def _last_finished_gw(fixtures: pd.DataFrame) -> int:
-    """Max fully finished GW in the current season."""
+    """Max fully finished and officially checked GW in the current season."""
     fx = fixtures
     if "season" in fx.columns:
         fx = fx[fx["season"] == SEASON]
     if fx.empty:
         return 0
     fin = fx["finished"].astype(str).str.lower().isin(["true", "1"])
+    if "data_checked" in fx.columns:
+        fin &= fx["data_checked"].astype(str).str.lower().isin(["true", "1"])
     done = fin.groupby(fx["event"]).all()
     finished = done[done].index.astype(int)
     return int(finished.max()) if len(finished) else 0
 
 
+def _last_completed_gw(fixtures: pd.DataFrame) -> int:
+    """Max fully played GW, including scores still under official review."""
+    fx = fixtures[fixtures["season"] == SEASON] if "season" in fixtures else fixtures
+    if fx.empty:
+        return 0
+    fin = fx["finished"].astype(str).str.lower().isin(["true", "1"])
+    done = fin.groupby(fx["event"]).all()
+    completed = done[done].index.astype(int)
+    return int(completed.max()) if len(completed) else 0
+
+
 def _season_complete(fixtures: pd.DataFrame) -> bool:
-    """True once the current season has a fully finished GW38."""
+    """True once the current season has an officially finalized GW38."""
     return _last_finished_gw(fixtures) >= SEASON_END_GW
 
 
@@ -131,6 +146,14 @@ def _invalidate_recalib(*paths: Path) -> None:
             p.unlink()
 
 
+def _models_need_refresh(state: dict, finalized_gw: int) -> bool:
+    try:
+        trained_gw = int(state.get("finalized_through_gw", -1))
+    except (TypeError, ValueError):
+        return True
+    return state.get("season") != SEASON or trained_gw != finalized_gw
+
+
 def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) -> None:
     """Train missing match / points / minutes / bonus artifacts.
 
@@ -139,10 +162,17 @@ def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) ->
     detect feature-schema drift on cached on-disk boosters (e.g. features.py
     grew new cols since last train) and force retrain.
     """
+    finalized_gw = _last_finished_gw(fx)
+    try:
+        state = json.loads(MODEL_STATE_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        state = {}
+    refresh = _models_need_refresh(state, finalized_gw)
+
     match_files = ("xgb_home_goals.json", "xgb_away_goals.json")
     match_probe = DATA_DIR / "xgb_home_goals.json"
     match_have = all((DATA_DIR / f).exists() for f in match_files)
-    if (not match_have
+    if (refresh or not match_have
             or _schema_drift(match_probe, match_feature_cols())):
         print("[models] (re)training match head — schema drift or missing artifacts")
         train_match_models(fx, hist, teams)
@@ -150,7 +180,7 @@ def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) ->
     points_files = [f"xgb_points_q{q:02d}_p{p}.json"
                     for q in (10, 50, 90) for p in (1, 2, 3, 4)]
     points_probe = DATA_DIR / "xgb_points_q10_p1.json"
-    if (not all((DATA_DIR / f).exists() for f in points_files)
+    if (refresh or not all((DATA_DIR / f).exists() for f in points_files)
             or _schema_drift(points_probe, _pos_feature_cols())):
         print("[models] (re)training points head — schema drift or missing artifacts")
         train_points_models()
@@ -159,17 +189,21 @@ def _ensure_models(fx: pd.DataFrame, hist: pd.DataFrame, teams: pd.DataFrame) ->
     minutes_probe = DATA_DIR / "xgb_minutes_plays.json"
     minutes_have_two_stage = all((DATA_DIR / f).exists() for f in minutes_files)
     minutes_have_legacy = (DATA_DIR / "xgb_minutes.json").exists()
-    if ((not minutes_have_two_stage and not minutes_have_legacy)
+    if (refresh or (not minutes_have_two_stage and not minutes_have_legacy)
             or (minutes_have_two_stage and _schema_drift(minutes_probe, minutes_feature_cols()))):
         print("[models] (re)training minutes head — schema drift or missing artifacts")
         train_minutes_model()
         _invalidate_recalib(MINUTES_RECALIB_PATH)
     bonus_files = [f"xgb_bonus_q{q:02d}.json" for q in (10, 50, 90)]
     bonus_probe = DATA_DIR / "xgb_bonus_q10.json"
-    if (not all((DATA_DIR / f).exists() for f in bonus_files)
+    if (refresh or not all((DATA_DIR / f).exists() for f in bonus_files)
             or _schema_drift(bonus_probe, points_feature_cols())):
         print("[models] (re)training bonus head — schema drift or missing artifacts")
         train_bonus_model()
+    MODEL_STATE_PATH.write_text(json.dumps({
+        "season": SEASON,
+        "finalized_through_gw": finalized_gw,
+    }, indent=2) + "\n", encoding="utf-8")
 
 
 def _recalib_stale(path: Path, max_age_days: int = RECALIB_STALE_DAYS) -> bool:
@@ -233,6 +267,9 @@ def _load_prior() -> tuple[set[int], float, int] | None:
     if not snap.exists():
         return None
     df = pd.read_csv(snap)
+    if ("season" not in df.columns or df.empty
+            or not df["season"].astype(str).eq(SEASON).all()):
+        return None
     return (set(df["id"].astype(int)), float(df["bank"].iloc[0]),
             int(df["free_transfers"].iloc[0]))
 
@@ -240,6 +277,7 @@ def _load_prior() -> tuple[set[int], float, int] | None:
 def _persist(squad: pd.DataFrame, bank: float, ft: int) -> None:
     """Save GW snapshot (squad + bank + FT) for next run."""
     out = squad.copy()
+    out["season"] = SEASON
     out["bank"], out["free_transfers"] = bank, ft
     out.to_csv(OUT_DIR / "squad_snapshot.csv", index=False)
 
@@ -326,6 +364,10 @@ def main() -> None:
 
     if _season_complete(fixtures):
         print("[main] Season complete after refresh — stop scheduled pipeline.")
+        return
+
+    if _last_completed_gw(fixtures) > _last_finished_gw(fixtures):
+        print("[main] Latest GW is awaiting official score review — defer models and lineup.")
         return
 
     if _gw_in_play(fixtures):
