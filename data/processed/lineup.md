@@ -1,9 +1,9 @@
 # GW1 Lineup
 
-- **Bank:** £4.5m
+- **Bank:** £4.0m
 - **Hits:** 0
-- **Squad Value:** £95.5m
-- **XI Expected Points (incl. captain):** 59.8
+- **Squad Value:** £96.0m
+- **XI Expected Points (incl. captain):** 62.2
 
 ## Starting XI
 
@@ -11,7 +11,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Darlow | MUN | GK | 4.5 | 4.85 | 40.77 |  |
 | Canvot | CRY | DEF | 5.0 | 6.01 | 43.03 |  |
-| Guéhi | MCI | DEF | 6.0 | 3.57 | 36.61 |  |
+| Virgil | LIV | DEF | 6.5 | 5.96 | 38.68 |  |
 | Cash | AVL | DEF | 4.5 | 6.21 | 39.82 |  |
 | Shaw | MUN | DEF | 4.5 | 5.69 | 36.41 |  |
 | Bijol | LEE | DEF | 5.0 | 5.99 | 41.07 |  |
@@ -34,7 +34,7 @@
 
 | Out | In |
 | --- | --- |
-| O'Reilly | Bijol |
+| Guéhi | Virgil |
 
 ## Chip Recommendations
 
