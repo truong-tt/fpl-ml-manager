@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import xgboost as xgb
 
-from chips import (chip_token, load_chip_state,
+from chips import (chip_token, commit_chip, load_chip_state,
                    recommend_bench_boost, recommend_free_hit,
                    recommend_triple_captain, recommend_wildcard)
 from data_loader import SEASON, main as refresh_data
@@ -431,12 +431,22 @@ def main() -> None:
         hits = rec["hits"]
         ins, outs = rec["transfers_in"], rec["transfers_out"]
         bank = round(100.0 - float(squad["price"].sum()), 1)
-        next_ft = carry_free_transfers(ft, len(ins), gw, chip_used)
 
     tc = recommend_triple_captain(proj, squad_ids, gw, chip_used)
     bb = recommend_bench_boost(proj, squad_ids, xi_ids, gw, chip_used)
     fh = recommend_free_hit(fixtures, gw, HORIZON, chip_used)
     wc = recommend_wildcard(ins, hits, gw, chip_used)
+
+    # A recommendation landing on the current GW is the play — record it so
+    # later runs stop offering a chip that has been spent.
+    played = commit_chip(gw, proj, tc, bb, fh, wc, chip_used)
+    if played:
+        print(f"[chips] committed {played} at GW{gw}")
+
+    # Must follow commit_chip: a WC/FH committed for this GW preserves the
+    # banked FTs, so the carry has to see the chip that was just recorded.
+    if prior is not None:
+        next_ft = carry_free_transfers(ft, len(ins), gw, chip_used)
 
     md = _render(gw, squad, xi_ids, cap, vice, bank, hits, ins, outs,
                  players, teams, tc, bb, fh, wc)

@@ -42,7 +42,8 @@ print = functools.partial(builtins.print, flush=True)  # noqa: A001
 
 from data_loader import SEASON
 from fpl_engine import FPLEngine
-from chips import HALF1_END, HALF2_END
+from chips import (BB_TRIGGER_BENCH_EV, HALF1_END, HALF2_END,
+                   TC_TRIGGER_PREMIUM)
 from optimizer import solve_initial_squad, solve_rhc_transfers
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -53,8 +54,6 @@ HORIZON = 8
 # uses set 1, second half (GW20..38) uses set 2. Set 1 expires at GW19 if
 # unused. FH cannot be played in consecutive GWs. TC = captain pts x3
 # (instead of x2). BB = bench pts also count.
-TC_TRIGGER_PREMIUM = 4.5   # use TC when (q90_cap - mu_cap) >= this
-BB_TRIGGER_BENCH_EV = 10.0  # use BB when bench mu sum >= this
 WC_TRIGGER = 8.0           # use WC when horizon-discounted XI EV uplift >= this
 FH_TRIGGER = 6.0           # use FH when single-GW XI EV uplift >= this
 WC_FH_TIME_LIMIT = 30      # CBC seconds for WC/FH alt-solves (vs 60 default)

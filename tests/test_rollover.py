@@ -269,6 +269,68 @@ class ChipRuleTests(unittest.TestCase):
         self.assertIsNone(chips.recommend_free_hit(fx, 10, 4, {"fh1": 10})["gw"])
 
 
+class ChipCommitTests(unittest.TestCase):
+    """The pipeline is the manager: a recommendation for the current GW is
+    the play, and gets recorded so later runs stop offering it."""
+
+    @staticmethod
+    def _proj(gw: int, cap_xp: float, xp: float) -> pd.DataFrame:
+        return pd.DataFrame({"id": [1], "pos_id": [3],
+                             f"cap_xp_{gw}": [cap_xp], f"xp_{gw}": [xp]})
+
+    def _commit(self, gw, tc=None, bb=None, fh=None, wc=None, used=None,
+                cap_xp=12.0, xp=5.0):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "chip_state.json"
+            used = {} if used is None else used
+            tok = chips.commit_chip(
+                gw, self._proj(gw, cap_xp, xp),
+                tc or {"gw": None}, bb or {"gw": None},
+                fh or {"gw": None, "blanks": 0},
+                wc or {"recommend": False}, used, path)
+            on_disk = chips.load_chip_state(path)
+        return tok, used, on_disk
+
+    def test_future_gw_recommendation_is_not_recorded(self) -> None:
+        tok, used, _ = self._commit(5, tc={"gw": 9, "player_id": 1})
+        self.assertIsNone(tok)
+        self.assertEqual(used, {})
+
+    def test_current_gw_recommendation_is_recorded_and_persisted(self) -> None:
+        # premium = 12.0 - 5.0 = 7.0, over TC_TRIGGER_PREMIUM (4.5)
+        tok, used, on_disk = self._commit(5, tc={"gw": 5, "player_id": 1})
+        self.assertEqual(tok, "tc1")
+        self.assertEqual(used["tc1"], 5)
+        self.assertEqual(on_disk, {"tc1": 5})
+
+    def test_weak_captain_premium_does_not_fire_tc(self) -> None:
+        # premium = 6.0 - 5.0 = 1.0, under the 4.5 trigger
+        tok, _, _ = self._commit(5, tc={"gw": 5, "player_id": 1},
+                                 cap_xp=6.0, xp=5.0)
+        self.assertIsNone(tok)
+
+    def test_one_chip_per_gw(self) -> None:
+        """Pipeline runs twice daily — a later run must not stack a second
+        chip onto a GW that already has one."""
+        tok, _, _ = self._commit(5, tc={"gw": 5, "player_id": 1},
+                                 used={"bb1": 5})
+        self.assertIsNone(tok)
+
+    def test_wildcard_outranks_points_chips_on_the_same_gw(self) -> None:
+        tok, _, _ = self._commit(5, tc={"gw": 5, "player_id": 1},
+                                 bb={"gw": 5, "bonus": 30.0},
+                                 wc={"recommend": True})
+        self.assertEqual(tok, "wc1")
+
+    def test_bench_boost_below_trigger_does_not_fire(self) -> None:
+        tok, _, _ = self._commit(5, bb={"gw": 5, "bonus": 4.0})
+        self.assertIsNone(tok)
+
+    def test_second_half_commit_uses_set2_token(self) -> None:
+        tok, _, _ = self._commit(25, tc={"gw": 25, "player_id": 1})
+        self.assertEqual(tok, "tc2")
+
+
 class FreeTransferCarryTests(unittest.TestCase):
     """2026/27: WC/FH preserve banked FTs; transfers consume only what's spent."""
 
@@ -289,6 +351,19 @@ class FreeTransferCarryTests(unittest.TestCase):
 
     def test_carry_caps_at_five(self) -> None:
         self.assertEqual(self._carry(5, 0, 8, {}), 5)
+
+    def test_carry_sees_a_chip_committed_this_run(self) -> None:
+        """Regression: next_ft was computed before commit_chip ran, so a WC
+        committed this GW did not preserve the bank."""
+        used: dict[str, int] = {}
+        proj = pd.DataFrame({"id": [1], "pos_id": [3],
+                             "cap_xp_8": [6.0], "xp_8": [5.0]})
+        with tempfile.TemporaryDirectory() as tmp:
+            chips.commit_chip(8, proj, {"gw": None}, {"gw": None},
+                              {"gw": None, "blanks": 0}, {"recommend": True},
+                              used, Path(tmp) / "s.json")
+        self.assertEqual(used, {"wc1": 8})
+        self.assertEqual(self._carry(3, 12, 8, used), 4)
 
 
 if __name__ == "__main__":

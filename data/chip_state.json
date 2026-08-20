@@ -1,4 +1,4 @@
 {
-  "_comment": "Chips you have actually played. Token -> GW. Tokens: tc1/bb1/fh1/wc1 (GW1-19), tc2/bb2/fh2/wc2 (GW20-38). The pipeline reads this and never writes it.",
+  "_comment": "Chips played, token -> GW. Tokens: tc1/bb1/fh1/wc1 (GW1-19), tc2/bb2/fh2/wc2 (GW20-38). Written by the pipeline when a recommendation lands on the current GW; edit by hand to correct or to pre-record a chip played outside the pipeline.",
   "used": {}
 }

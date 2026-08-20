@@ -18,6 +18,12 @@ import pandas as pd
 HALF1_END = 19
 HALF2_END = 38
 
+# Firing thresholds, shared with season_replay.py so the live path and the
+# replay commit chips on the same evidence.
+TC_TRIGGER_PREMIUM = 4.5    # fire TC when (cap_xp - xp) for the captain >= this
+BB_TRIGGER_BENCH_EV = 10.0  # fire BB when bench mu sum >= this
+FH_TRIGGER_BLANKS = 2       # fire FH when this many teams blank
+
 CHIP_STATE = Path(__file__).resolve().parent.parent / "data" / "chip_state.json"
 
 
@@ -42,6 +48,17 @@ def load_chip_state(path: Path | None = None) -> dict[str, int]:
         return {str(k): int(v) for k, v in used.items()}
     except (OSError, ValueError, AttributeError, TypeError):
         return {}
+
+
+def save_chip_state(used: dict[str, int], path: Path | None = None) -> None:
+    """Write the played-chip ledger back to disk, preserving the comment key."""
+    p = CHIP_STATE if path is None else path
+    try:
+        doc = json.loads(p.read_text())
+    except (OSError, ValueError):
+        doc = {}
+    doc["used"] = dict(sorted(used.items()))
+    p.write_text(json.dumps(doc, indent=2) + chr(10))
 
 
 def chip_token(kind: str, gw: int) -> str:
@@ -143,3 +160,51 @@ def recommend_wildcard(transfers_in: list, hits: int, gw: int,
     have = chip_available("wc", gw, used or {})
     return {"recommend": have and (len(transfers_in) >= 4 or hits >= 2),
             "n_transfers": len(transfers_in), "hits": hits, "available": have}
+
+
+def commit_chip(gw: int, proj: pd.DataFrame, tc: dict, bb: dict, fh: dict,
+                wc: dict, used: dict[str, int],
+                path: Path | None = None) -> str | None:
+    """Record at most one chip as played for the *current* GW.
+
+    The pipeline is the manager: nothing external records what it played, so
+    a recommendation that lands on the current GW and clears its trigger is
+    the play. Recommendations for a future GW stay advisory and are never
+    recorded — they are still free to change next run.
+
+    Returns the token committed, or None. Idempotent: the pipeline runs twice
+    daily, and the one-chip-per-GW guard means a later run in the same GW
+    cannot stack a second chip on top of the first.
+    """
+    if gw in used.values():          # a chip is already down for this GW
+        return None
+
+    cands: list[tuple[str, float]] = []
+
+    # WC and FH are structural: WC fires when the squad is far from optimal,
+    # FH only on a blank week. Both outrank the points-uplift chips.
+    if wc.get("recommend"):
+        cands.append(("wc", float("inf")))
+    if fh.get("gw") == gw and fh.get("blanks", 0) >= FH_TRIGGER_BLANKS:
+        cands.append(("fh", float(fh["blanks"]) * 1e6))
+
+    if bb.get("gw") == gw and float(bb.get("bonus", 0.0)) >= BB_TRIGGER_BENCH_EV:
+        cands.append(("bb", float(bb["bonus"])))
+
+    # TC premium = captain's q90 minus its mean, matching season_replay.
+    if tc.get("gw") == gw and tc.get("player_id") is not None:
+        row = proj[proj["id"] == tc["player_id"]]
+        cap_col, mu_col = f"cap_xp_{gw}", f"xp_{gw}"
+        if not row.empty and cap_col in row.columns and mu_col in row.columns:
+            premium = float(row[cap_col].iloc[0]) - float(row[mu_col].iloc[0])
+            if premium >= TC_TRIGGER_PREMIUM:
+                cands.append(("tc", premium))
+
+    if not cands:
+        return None
+
+    kind = max(cands, key=lambda c: c[1])[0]
+    token = chip_token(kind, gw)
+    used[token] = gw
+    save_chip_state(used, path)
+    return token

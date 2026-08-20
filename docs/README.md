@@ -292,12 +292,15 @@ Only $t_0$ executed: `transfers_in/out`, `xi_ids`, `captain`, `vice`, `hits`. Ne
 | **FH** | GW with most blanking teams. Non-consecutive |
 | **WC** | Trigger if RHC proposes ≥4 transfers IN or ≥2 hits |
 
-**Chip inventory** (`data/chip_state.json`). The pipeline *recommends* chips; it never plays one, so which chips are spent cannot be derived from its own output. It is an input the manager maintains — `{"used": {"tc1": 5, "fh1": 12}}`, token → GW played. Absent or malformed file = nothing used, which is also the cold-start default.
+**Chip inventory** (`data/chip_state.json`). Token → GW played, e.g. `{"used": {"tc1": 5, "fh1": 12}}`. Absent or malformed file = nothing used, which is also the cold-start default.
+
+Self-maintaining: there is no linked FPL entry to sync from, so the pipeline is the manager. `commit_chip` in [src/chips.py](../src/chips.py) records a chip when its recommendation lands on the **current** GW and clears the trigger it shares with the replay (`TC_TRIGGER_PREMIUM = 4.5` on the captain's `cap_xp − xp`, `BB_TRIGGER_BENCH_EV = 10.0` on the bench sum, ≥2 blanking teams for FH, the existing ≥4-transfers/≥2-hits rule for WC). Recommendations for a *future* GW stay advisory and are never recorded — they remain free to change next run. One chip per GW, so the twice-daily schedule cannot stack a second chip onto a GW that already has one; WC and FH outrank the points-uplift chips when several fire together. Hand-edit the file to correct a misfire or to pre-record a chip played outside the pipeline.
 
 Two effects on the weekly recommendations:
 
 - **Set clamp** (needs no config). Each recommender only scans horizon GWs in the *current* set. Without it an H=8 scan from GW16 reaches GW23 and can propose a set-1 chip for a GW where set 1 has already expired.
 - **Availability.** A spent token suppresses that chip's recommendation for the rest of its half; the set-2 copy is unaffected. FH additionally skips the GW immediately after any recorded FH — the live case is FH1 at GW19 blocking FH2 at GW20.
+- **Ordering.** The free-transfer carry runs *after* `commit_chip`, so a WC or FH recorded on the current run preserves that week's banked FTs.
 
 **Free-transfer carry** (`carry_free_transfers` in [src/main.py](../src/main.py)). A transfer consumes only the FTs actually spent — 1 of 3 banked leaves 2, then +1 = 3 — and under 2026/27 a WC or FH week does not reset the bank at all. Transfers beyond the FTs available are hits: they cost points, not bank. Cap 5.
 
@@ -355,7 +358,7 @@ fpl-ml-manager/
 |   |-- players.csv, teams.csv, fixtures.csv, history.csv
 |   |-- cup_fixtures.csv, fixture_lambdas.csv, team_rho.json
 |   |-- xgb_*.json, model_state.json, points_recalib.json, minutes_recalib.json
-|   |-- chip_state.json           # chips played (manager-maintained input)
+|   |-- chip_state.json           # chips played (self-maintaining ledger)
 |   |-- season_replay.csv
 |   `-- processed/
 |       |-- lineup.md, squad_snapshot.csv, season_replay.md
@@ -393,7 +396,7 @@ python src/main.py
 
 First run trains every missing artifact. Later runs reuse compatible `data/*.json` models and write [data/processed/lineup.md](../data/processed/lineup.md) + [data/processed/squad_snapshot.csv](../data/processed/squad_snapshot.csv).
 
-After playing a chip, record it in [data/chip_state.json](../data/chip_state.json) (`{"used": {"wc1": 8}}`) so later runs stop recommending it and keep the free-transfer carry honest (§6). Nothing else writes that file.
+Chips played are recorded automatically in [data/chip_state.json](../data/chip_state.json) (§6). Edit it by hand only to correct a misfire or to pre-record a chip played outside the pipeline.
 
 ### Recalibration
 
