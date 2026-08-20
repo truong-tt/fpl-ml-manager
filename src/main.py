@@ -10,7 +10,8 @@ import xgboost as xgb
 
 from chips import (chip_token, commit_chip, load_chip_state,
                    recommend_bench_boost, recommend_free_hit,
-                   recommend_triple_captain, recommend_wildcard)
+                   recommend_triple_captain, recommend_wildcard,
+                   withdraw_pending)
 from data_loader import SEASON, main as refresh_data
 from features import match_feature_cols, minutes_feature_cols, points_feature_cols
 from fpl_engine import FPLEngine
@@ -431,6 +432,10 @@ def main() -> None:
         hits = rec["hits"]
         ins, outs = rec["transfers_in"], rec["transfers_out"]
         bank = round(100.0 - float(squad["price"].sum()), 1)
+
+    # This GW's deadline has not passed, so last run's call is not yet spent:
+    # clear it and re-decide from current data before the recommenders read it.
+    withdraw_pending(chip_used, gw)
 
     tc = recommend_triple_captain(proj, squad_ids, gw, chip_used)
     bb = recommend_bench_boost(proj, squad_ids, xi_ids, gw, chip_used)

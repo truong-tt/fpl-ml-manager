@@ -4,9 +4,9 @@ FPL 2026/27 chip rules: two of each chip per season. Set 1 (tc1/bb1/fh1/wc1)
 covers GW1..19 and expires unused at the GW19 deadline; set 2 covers GW20..38.
 FH cannot be played in consecutive GWs.
 
-The pipeline *recommends* chips, it never plays them, so used-chip inventory
-cannot be derived from pipeline output -- it is read from data/chip_state.json,
-which the manager maintains. Absent file = nothing used yet.
+There is no linked FPL entry to sync from, so the pipeline is the manager and
+keeps its own ledger of plays in data/chip_state.json. Absent, malformed, or
+stamped with a previous season = nothing used yet.
 """
 from __future__ import annotations
 
@@ -37,26 +37,46 @@ def set_last_gw(gw: int) -> int:
     return HALF1_END if chip_set(gw) == 1 else HALF2_END
 
 
-def load_chip_state(path: Path | None = None) -> dict[str, int]:
+def _season() -> str:
+    """Lazy import — keeps `chips` usable without the data_loader dependency."""
+    from data_loader import SEASON
+    return SEASON
+
+
+def load_chip_state(path: Path | None = None,
+                    season: str | None = None) -> dict[str, int]:
     """{token: gw_played} from data/chip_state.json. Missing/corrupt -> {}.
 
-    Shape: {"used": {"tc1": 5, "fh1": 12}}. Never written by the pipeline.
+    Shape: {"season": "2026-2027", "used": {"tc1": 5, "fh1": 12}}.
+
+    Chips reset every season, so a ledger stamped with a previous season reads
+    as empty — without this the 8 tokens spent in one season would suppress
+    every chip in the next. Matches the season guards on model_state.json and
+    squad_snapshot.csv. An unstamped ledger is treated as the current season
+    so a hand-written file does not silently evaporate.
     """
     p = CHIP_STATE if path is None else path
+    want = _season() if season is None else season
     try:
-        used = json.loads(p.read_text()).get("used", {})
-        return {str(k): int(v) for k, v in used.items()}
+        doc = json.loads(p.read_text())
+        if str(doc.get("season", want)) != want:
+            return {}
+        return {str(k): int(v) for k, v in doc.get("used", {}).items()}
     except (OSError, ValueError, AttributeError, TypeError):
         return {}
 
 
-def save_chip_state(used: dict[str, int], path: Path | None = None) -> None:
-    """Write the played-chip ledger back to disk, preserving the comment key."""
+def save_chip_state(used: dict[str, int], path: Path | None = None,
+                    season: str | None = None) -> None:
+    """Write the ledger back, stamped with the season, keeping the comment."""
     p = CHIP_STATE if path is None else path
     try:
         doc = json.loads(p.read_text())
+        if not isinstance(doc, dict):
+            doc = {}
     except (OSError, ValueError):
         doc = {}
+    doc["season"] = _season() if season is None else season
     doc["used"] = dict(sorted(used.items()))
     p.write_text(json.dumps(doc, indent=2) + chr(10))
 
@@ -162,6 +182,24 @@ def recommend_wildcard(transfers_in: list, hits: int, gw: int,
             "n_transfers": len(transfers_in), "hits": hits, "available": have}
 
 
+def withdraw_pending(used: dict[str, int], gw: int) -> bool:
+    """Drop any chip recorded for `gw`, in place. True if one was dropped.
+
+    The current GW has not kicked off — its deadline is still ahead, so an
+    entry against it is intent, not a spent chip. Midweek news must be able to
+    change or withdraw the call, and the recommenders would otherwise treat it
+    as spent and refuse to re-propose it. Entries for earlier GWs are past
+    their deadline and frozen.
+
+    Call this before the recommenders run; commit_chip then re-decides and
+    persists. At most one chip per GW survives either way.
+    """
+    stale = [k for k, v in used.items() if v == gw]
+    for k in stale:
+        del used[k]
+    return bool(stale)
+
+
 def commit_chip(gw: int, proj: pd.DataFrame, tc: dict, bb: dict, fh: dict,
                 wc: dict, used: dict[str, int],
                 path: Path | None = None) -> str | None:
@@ -172,13 +210,10 @@ def commit_chip(gw: int, proj: pd.DataFrame, tc: dict, bb: dict, fh: dict,
     the play. Recommendations for a future GW stay advisory and are never
     recorded — they are still free to change next run.
 
-    Returns the token committed, or None. Idempotent: the pipeline runs twice
-    daily, and the one-chip-per-GW guard means a later run in the same GW
-    cannot stack a second chip on top of the first.
+    Returns the token committed, or None. The pipeline runs twice daily; a
+    later run in the same GW revises its own not-yet-locked call rather than
+    stacking a second chip on top of it.
     """
-    if gw in used.values():          # a chip is already down for this GW
-        return None
-
     cands: list[tuple[str, float]] = []
 
     # WC and FH are structural: WC fires when the squad is far from optimal,
@@ -200,11 +235,13 @@ def commit_chip(gw: int, proj: pd.DataFrame, tc: dict, bb: dict, fh: dict,
             if premium >= TC_TRIGGER_PREMIUM:
                 cands.append(("tc", premium))
 
-    if not cands:
-        return None
+    token = None
+    if cands:
+        token = chip_token(max(cands, key=lambda c: c[1])[0], gw)
+        used[token] = gw
 
-    kind = max(cands, key=lambda c: c[1])[0]
-    token = chip_token(kind, gw)
-    used[token] = gw
-    save_chip_state(used, path)
+    # Covers a withdrawal too: if withdraw_pending dropped this GW's call and
+    # nothing replaced it, `used` still differs from disk and must be written.
+    if used != load_chip_state(path):
+        save_chip_state(used, path)
     return token

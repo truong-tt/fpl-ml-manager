@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import sys
 import tempfile
 import unittest
@@ -283,12 +284,13 @@ class ChipCommitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "chip_state.json"
             used = {} if used is None else used
+            chips.save_chip_state(used, path, season="2026-2027")
             tok = chips.commit_chip(
                 gw, self._proj(gw, cap_xp, xp),
                 tc or {"gw": None}, bb or {"gw": None},
                 fh or {"gw": None, "blanks": 0},
                 wc or {"recommend": False}, used, path)
-            on_disk = chips.load_chip_state(path)
+            on_disk = chips.load_chip_state(path, season="2026-2027")
         return tok, used, on_disk
 
     def test_future_gw_recommendation_is_not_recorded(self) -> None:
@@ -309,12 +311,33 @@ class ChipCommitTests(unittest.TestCase):
                                  cap_xp=6.0, xp=5.0)
         self.assertIsNone(tok)
 
-    def test_one_chip_per_gw(self) -> None:
-        """Pipeline runs twice daily — a later run must not stack a second
-        chip onto a GW that already has one."""
-        tok, _, _ = self._commit(5, tc={"gw": 5, "player_id": 1},
-                                 used={"bb1": 5})
-        self.assertIsNone(tok)
+    def test_one_chip_per_gw_after_revision(self) -> None:
+        """Pipeline runs twice daily. The later run withdraws its own
+        not-yet-locked call and re-decides — never stacking a second chip."""
+        used = {"bb1": 5}
+        self.assertTrue(chips.withdraw_pending(used, 5))
+        tok, used, _ = self._commit(5, tc={"gw": 5, "player_id": 1}, used=used)
+        self.assertEqual(tok, "tc1")
+        self.assertEqual(list(used.values()).count(5), 1)
+
+    def test_withdrawal_leaves_earlier_gws_frozen(self) -> None:
+        """Past deadlines are spent for real — only the current GW is intent."""
+        used = {"bb1": 3, "tc1": 5}
+        self.assertTrue(chips.withdraw_pending(used, 5))
+        self.assertEqual(used, {"bb1": 3})
+        self.assertFalse(chips.withdraw_pending(used, 5))
+
+    def test_withdrawn_call_with_no_replacement_is_persisted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "chip_state.json"
+            chips.save_chip_state({"tc1": 5}, path, season="2026-2027")
+            used = chips.load_chip_state(path, season="2026-2027")
+            chips.withdraw_pending(used, 5)
+            tok = chips.commit_chip(5, self._proj(5, 6.0, 5.0), {"gw": None},
+                                    {"gw": None}, {"gw": None, "blanks": 0},
+                                    {"recommend": False}, used, path)
+            self.assertIsNone(tok)
+            self.assertEqual(chips.load_chip_state(path, season="2026-2027"), {})
 
     def test_wildcard_outranks_points_chips_on_the_same_gw(self) -> None:
         tok, _, _ = self._commit(5, tc={"gw": 5, "player_id": 1},
@@ -329,6 +352,39 @@ class ChipCommitTests(unittest.TestCase):
     def test_second_half_commit_uses_set2_token(self) -> None:
         tok, _, _ = self._commit(25, tc={"gw": 25, "player_id": 1})
         self.assertEqual(tok, "tc2")
+
+
+class ChipSeasonRolloverTests(unittest.TestCase):
+    """Chips reset every season, like model_state.json and squad_snapshot.csv."""
+
+    def test_previous_season_ledger_reads_as_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "chip_state.json"
+            chips.save_chip_state({"tc1": 5, "wc2": 30}, path,
+                                  season="2026-2027")
+            self.assertEqual(
+                chips.load_chip_state(path, season="2026-2027"),
+                {"tc1": 5, "wc2": 30})
+            # Rollover: without the guard all 8 tokens would read as spent and
+            # no chip would ever fire again.
+            self.assertEqual(
+                chips.load_chip_state(path, season="2027-2028"), {})
+
+    def test_unstamped_ledger_is_treated_as_current_season(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "chip_state.json"
+            path.write_text('{"used": {"fh1": 9}}')
+            self.assertEqual(
+                chips.load_chip_state(path, season="2026-2027"), {"fh1": 9})
+
+    def test_save_stamps_the_season(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "chip_state.json"
+            path.write_text('{"_comment": "keep me", "used": {}}')
+            chips.save_chip_state({"bb1": 7}, path, season="2026-2027")
+            doc = json.loads(path.read_text())
+            self.assertEqual(doc["season"], "2026-2027")
+            self.assertEqual(doc["_comment"], "keep me")
 
 
 class FreeTransferCarryTests(unittest.TestCase):

@@ -1,4 +1,5 @@
 {
-  "_comment": "Chips played, token -> GW. Tokens: tc1/bb1/fh1/wc1 (GW1-19), tc2/bb2/fh2/wc2 (GW20-38). Written by the pipeline when a recommendation lands on the current GW; edit by hand to correct or to pre-record a chip played outside the pipeline.",
+  "_comment": "Chips played, token -> GW. Tokens: tc1/bb1/fh1/wc1 (GW1-19), tc2/bb2/fh2/wc2 (GW20-38). Written by the pipeline; the entry for the upcoming GW is provisional until its deadline passes. Edit by hand to correct a call or pre-record a chip played outside the pipeline.",
+  "season": "2026-2027",
   "used": {}
 }
