@@ -42,6 +42,7 @@ print = functools.partial(builtins.print, flush=True)  # noqa: A001
 
 from data_loader import SEASON
 from fpl_engine import FPLEngine
+from chips import HALF1_END, HALF2_END
 from optimizer import solve_initial_squad, solve_rhc_transfers
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -57,8 +58,6 @@ BB_TRIGGER_BENCH_EV = 10.0  # use BB when bench mu sum >= this
 WC_TRIGGER = 8.0           # use WC when horizon-discounted XI EV uplift >= this
 FH_TRIGGER = 6.0           # use FH when single-GW XI EV uplift >= this
 WC_FH_TIME_LIMIT = 30      # CBC seconds for WC/FH alt-solves (vs 60 default)
-HALF1_END = 19
-HALF2_END = 38
 
 # Window of GWs at which we attempt a WC/FH alt-solve. Keeps the replay loop
 # bounded — each alt-solve is a full cold-start MILP. The half-deadline GWs
