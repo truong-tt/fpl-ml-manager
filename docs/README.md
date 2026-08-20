@@ -281,7 +281,9 @@ Only $t_0$ executed: `transfers_in/out`, `xi_ids`, `captain`, `vice`, `hits`. Ne
 
 [src/chips.py](../src/chips.py). Greedy post-processing over projection frame — MILP doesn't see chip activation directly.
 
-**2026/27 rules**: 8 chips, two of each. Set 1 (TC1/BB1/FH1/WC1) expires GW19. Set 2 GW20+. TC × 3. FH no consecutive GWs. WC + FH preserve banked transfers.
+**2026/27 rules**: 8 chips, two of each. Set 1 (TC1/BB1/FH1/WC1) expires at the GW19 deadline. Set 2 GW20+. TC × 3. FH no consecutive GWs. WC + FH preserve banked transfers.
+
+`chip_set(gw)`, `HALF1_END = 19` and `HALF2_END = 38` live in [src/chips.py](../src/chips.py) and are imported by [src/season_replay.py](../src/season_replay.py) — one source of truth for the half boundary.
 
 | Chip | Heuristic |
 | --- | --- |
@@ -289,6 +291,15 @@ Only $t_0$ executed: `transfers_in/out`, `xi_ids`, `captain`, `vice`, `hits`. Ne
 | **BB** | GW maxing $\sum_\text{bench} \mu$ |
 | **FH** | GW with most blanking teams. Non-consecutive |
 | **WC** | Trigger if RHC proposes ≥4 transfers IN or ≥2 hits |
+
+**Chip inventory** (`data/chip_state.json`). The pipeline *recommends* chips; it never plays one, so which chips are spent cannot be derived from its own output. It is an input the manager maintains — `{"used": {"tc1": 5, "fh1": 12}}`, token → GW played. Absent or malformed file = nothing used, which is also the cold-start default.
+
+Two effects on the weekly recommendations:
+
+- **Set clamp** (needs no config). Each recommender only scans horizon GWs in the *current* set. Without it an H=8 scan from GW16 reaches GW23 and can propose a set-1 chip for a GW where set 1 has already expired.
+- **Availability.** A spent token suppresses that chip's recommendation for the rest of its half; the set-2 copy is unaffected. FH additionally skips the GW immediately after any recorded FH — the live case is FH1 at GW19 blocking FH2 at GW20.
+
+**Free-transfer carry** (`carry_free_transfers` in [src/main.py](../src/main.py)). A transfer consumes only the FTs actually spent — 1 of 3 banked leaves 2, then +1 = 3 — and under 2026/27 a WC or FH week does not reset the bank at all. Transfers beyond the FTs available are hits: they cost points, not bank. Cap 5.
 
 **Replay** ([src/season_replay.py](../src/season_replay.py)): applies the same one-chip-per-GW rule, compares TC/BB/WC/FH uplift, gates expensive WC/FH alt-solves to configured attempt windows plus GW19/GW38 force-fire, and writes `data/season_replay.csv` + `data/processed/season_replay.md`.
 
@@ -315,7 +326,11 @@ Per quantile: empirical coverage $P(y \leq q_\alpha)$, gap from $\alpha$, pinbal
 
 Per side on held-out fixtures: marginal Poisson NLL, goal MAE, CS Brier, CS rate gap. CS = $e^{-\lambda_\text{opp}}$. Persistent CS bias → tune λ-head hyperparams or add stronger defensive features.
 
-### 7.4 Minutes audit
+### 7.4 Unit tests
+
+[tests/](../tests/) covers season rollover, the workflow gate, and the preseason projection baseline. Run `python -m unittest discover -s tests`. [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs it on every PR and push to `main` (skipped for `data/**`-only commits).
+
+### 7.5 Minutes audit
 
 Walk-forward held-out mins/90 + binary `played`: MAE, ROC-AUC, Brier, 10-bin reliability (predicted-mean vs actual-played-rate per bucket). Run with `--minutes-recalib data/minutes_recalib.json` to audit calibrated predictions.
 
@@ -340,14 +355,18 @@ fpl-ml-manager/
 |   |-- players.csv, teams.csv, fixtures.csv, history.csv
 |   |-- cup_fixtures.csv, fixture_lambdas.csv, team_rho.json
 |   |-- xgb_*.json, model_state.json, points_recalib.json, minutes_recalib.json
+|   |-- chip_state.json           # chips played (manager-maintained input)
 |   |-- season_replay.csv
 |   `-- processed/
 |       |-- lineup.md, squad_snapshot.csv, season_replay.md
 |       `-- backtest/
+|-- tests/
+|   `-- test_rollover.py         # Season-rollover + preseason baseline unit tests
 |-- docs/
 |   |-- README.md
 |   `-- FPL_101.md
 `-- .github/workflows/
+    |-- ci.yml                   # compileall + unittest on PR/push
     |-- pipeline.yml
     `-- season_replay.yml
 ```
@@ -373,6 +392,8 @@ python src/main.py
 ```
 
 First run trains every missing artifact. Later runs reuse compatible `data/*.json` models and write [data/processed/lineup.md](../data/processed/lineup.md) + [data/processed/squad_snapshot.csv](../data/processed/squad_snapshot.csv).
+
+After playing a chip, record it in [data/chip_state.json](../data/chip_state.json) (`{"used": {"wc1": 8}}`) so later runs stop recommending it and keep the free-transfer carry honest (§6). Nothing else writes that file.
 
 ### Recalibration
 

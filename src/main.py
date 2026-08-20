@@ -8,7 +8,8 @@ from pathlib import Path
 import pandas as pd
 import xgboost as xgb
 
-from chips import (recommend_bench_boost, recommend_free_hit,
+from chips import (chip_token, load_chip_state,
+                   recommend_bench_boost, recommend_free_hit,
                    recommend_triple_captain, recommend_wildcard)
 from data_loader import SEASON, main as refresh_data
 from features import match_feature_cols, minutes_feature_cols, points_feature_cols
@@ -261,6 +262,20 @@ def _maybe_recalibrate(fixtures: pd.DataFrame, history: pd.DataFrame,
             print(f"recalib minutes -> {MINUTES_RECALIB_PATH}")
 
 
+def carry_free_transfers(ft: int, n_in: int, gw: int,
+                         chip_used: dict[str, int]) -> int:
+    """FTs entering next GW, per 2026/27 rules.
+
+    A transfer consumes only the FTs actually spent — using 1 of 3 banked
+    leaves 2, not 0 — and playing WC or FH no longer resets the bank at all.
+    Transfers beyond the FTs available are hits: they cost points, not bank.
+    Cap is 5 banked.
+    """
+    on_chip = any(chip_used.get(chip_token(k, gw)) == gw for k in ("wc", "fh"))
+    consumed = 0 if on_chip else min(n_in, ft)
+    return min(5, ft - consumed + 1)
+
+
 def _load_prior() -> tuple[set[int], float, int] | None:
     """Read last-week squad snapshot for RHC. None on cold start."""
     snap = OUT_DIR / "squad_snapshot.csv"
@@ -337,8 +352,11 @@ def _render(
         chips.append(f"- **Bench Boost:** GW{bb['gw']} (+{bb['bonus']:.1f} pts)")
     if fh.get("gw") is not None and fh["blanks"] >= 2:
         chips.append(f"- **Free Hit:** GW{fh['gw']} ({fh['blanks']} teams blank)")
-    chips.append(f"- **Wildcard:** {'PLAY NOW' if wc['recommend'] else 'hold'}"
-                 f" ({wc['n_transfers']} suggested transfers, {wc['hits']} hits)")
+    if not wc.get("available", True):
+        chips.append("- **Wildcard:** spent for this half of the season")
+    else:
+        chips.append(f"- **Wildcard:** {'PLAY NOW' if wc['recommend'] else 'hold'}"
+                     f" ({wc['n_transfers']} suggested transfers, {wc['hits']} hits)")
     lines += chips
     return "\n".join(lines) + "\n"
 
@@ -383,6 +401,7 @@ def main() -> None:
     if proj.empty:
         raise RuntimeError("empty projections; check data and model artifacts")
 
+    chip_used = load_chip_state()
     prior = _load_prior()
     if prior is None:
         sq = solve_initial_squad(proj, lambda_var=LAMBDA_VAR,
@@ -412,12 +431,12 @@ def main() -> None:
         hits = rec["hits"]
         ins, outs = rec["transfers_in"], rec["transfers_out"]
         bank = round(100.0 - float(squad["price"].sum()), 1)
-        next_ft = min(5, ft + 1) if not ins else 1
+        next_ft = carry_free_transfers(ft, len(ins), gw, chip_used)
 
-    tc = recommend_triple_captain(proj, squad_ids)
-    bb = recommend_bench_boost(proj, squad_ids, xi_ids)
-    fh = recommend_free_hit(fixtures, gw, HORIZON)
-    wc = recommend_wildcard(ins, hits)
+    tc = recommend_triple_captain(proj, squad_ids, gw, chip_used)
+    bb = recommend_bench_boost(proj, squad_ids, xi_ids, gw, chip_used)
+    fh = recommend_free_hit(fixtures, gw, HORIZON, chip_used)
+    wc = recommend_wildcard(ins, hits, gw, chip_used)
 
     md = _render(gw, squad, xi_ids, cap, vice, bank, hits, ins, outs,
                  players, teams, tc, bb, fh, wc)

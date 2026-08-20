@@ -12,6 +12,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+import chips
 import data_loader
 import workflow_gate
 
@@ -202,6 +203,92 @@ class ArchiveLoaderTests(unittest.TestCase):
         self.assertEqual(int(result.iloc[0]["team"]), 8)
         self.assertEqual(float(result.iloc[0]["total_points"]), 8)
         self.assertEqual(float(result.iloc[0]["bonus"]), 2)
+
+
+class ChipRuleTests(unittest.TestCase):
+    """FPL 2026/27: two chip sets, set 1 expires at the GW19 deadline."""
+
+    def test_chip_set_boundaries(self) -> None:
+        self.assertEqual(chips.chip_set(1), 1)
+        self.assertEqual(chips.chip_set(19), 1)
+        self.assertEqual(chips.chip_set(20), 2)
+        self.assertEqual(chips.chip_set(38), 2)
+        self.assertEqual(chips.set_last_gw(5), 19)
+        self.assertEqual(chips.set_last_gw(25), 38)
+
+    def test_used_set1_chip_does_not_block_set2(self) -> None:
+        used = {"tc1": 5}
+        self.assertFalse(chips.chip_available("tc", 12, used))
+        self.assertTrue(chips.chip_available("tc", 25, used))
+
+    def test_missing_chip_state_file_means_nothing_used(self) -> None:
+        self.assertEqual(chips.load_chip_state(Path("does-not-exist.json")), {})
+
+    def test_recommenders_never_cross_the_set_boundary(self) -> None:
+        """From GW16 with H=8 the scan reaches GW23 — set-1 chips must not
+        be proposed for GW20+, where set 1 has already expired."""
+        proj = pd.DataFrame({
+            "id": [1, 2],
+            "pos_id": [3, 4],
+            **{f"cap_xp_{t}": [1.0, 50.0 if t >= 20 else 2.0] for t in range(16, 24)},
+            **{f"xp_{t}": [1.0, 50.0 if t >= 20 else 2.0] for t in range(16, 24)},
+        })
+        tc = chips.recommend_triple_captain(proj, {1, 2}, 16)
+        self.assertIsNotNone(tc["gw"])
+        self.assertLessEqual(tc["gw"], 19)
+
+        bb = chips.recommend_bench_boost(proj, {1, 2}, set(), 16)
+        self.assertIsNotNone(bb["gw"])
+        self.assertLessEqual(bb["gw"], 19)
+
+    def test_spent_chip_yields_no_recommendation(self) -> None:
+        proj = pd.DataFrame({"id": [1], "pos_id": [3],
+                             "cap_xp_5": [9.0], "xp_5": [9.0]})
+        self.assertIsNone(
+            chips.recommend_triple_captain(proj, {1}, 5, {"tc1": 2})["gw"])
+        self.assertIsNone(
+            chips.recommend_bench_boost(proj, {1}, set(), 5, {"bb1": 2})["gw"])
+        self.assertFalse(
+            chips.recommend_wildcard([1, 2, 3, 4], 0, 5, {"wc1": 2})["recommend"])
+        self.assertTrue(
+            chips.recommend_wildcard([1, 2, 3, 4], 0, 25, {"wc1": 2})["recommend"])
+
+    def test_free_hit_cannot_follow_a_free_hit(self) -> None:
+        """FH1 at GW19, so FH2 (available from GW20) must skip GW20 itself."""
+        fx = pd.DataFrame({
+            "event": [20, 21, 21],
+            "team_h": [1, 1, 3],
+            "team_a": [2, 2, 4],
+        })
+        # GW20 blanks teams 3+4; GW21 blanks none. Without the rule GW20 wins.
+        out = chips.recommend_free_hit(fx, 20, 4, {"fh1": 19})
+        self.assertNotEqual(out["gw"], 20)
+
+    def test_spent_free_hit_yields_no_recommendation(self) -> None:
+        fx = pd.DataFrame({"event": [10, 10], "team_h": [1, 3], "team_a": [2, 4]})
+        self.assertIsNone(chips.recommend_free_hit(fx, 10, 4, {"fh1": 10})["gw"])
+
+
+class FreeTransferCarryTests(unittest.TestCase):
+    """2026/27: WC/FH preserve banked FTs; transfers consume only what's spent."""
+
+    @staticmethod
+    def _carry(ft: int, n_in: int, gw: int, used: dict) -> int:
+        import main
+        return main.carry_free_transfers(ft, n_in, gw, used)
+
+    def test_partial_spend_keeps_the_remainder(self) -> None:
+        # 3 banked, spend 1 -> 2 left, +1 for the new GW = 3.
+        self.assertEqual(self._carry(3, 1, 8, {}), 3)
+
+    def test_full_spend_drops_to_one(self) -> None:
+        self.assertEqual(self._carry(3, 3, 8, {}), 1)
+
+    def test_wildcard_week_preserves_the_bank(self) -> None:
+        self.assertEqual(self._carry(3, 12, 8, {"wc1": 8}), 4)
+
+    def test_carry_caps_at_five(self) -> None:
+        self.assertEqual(self._carry(5, 0, 8, {}), 5)
 
 
 if __name__ == "__main__":

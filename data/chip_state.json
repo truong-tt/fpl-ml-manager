@@ -1,0 +1,4 @@
+{
+  "_comment": "Chips you have actually played. Token -> GW. Tokens: tc1/bb1/fh1/wc1 (GW1-19), tc2/bb2/fh2/wc2 (GW20-38). The pipeline reads this and never writes it.",
+  "used": {}
+}
