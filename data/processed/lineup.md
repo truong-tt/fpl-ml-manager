@@ -26,18 +26,16 @@
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
 | Pope | NEW | GK | 5.0 | 4.02 | 38.81 |  |
-| Bruno G. | ARS | MID | 7.0 | 3.3 | 28.11 |  |
+| Bruno G. | ARS | MID | 7.0 | 3.1 | 27.9 |  |
 | Saka | ARS | MID | 9.5 | 3.49 | 31.64 |  |
 | Hirst | IPS | FWD | 5.0 | 2.59 | 23.66 |  |
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Anderson | E.Le Fée |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW1 — B.Fernandes (+6.3 pts)
 - **Bench Boost:** GW4 (+17.4 pts)
-- **Wildcard:** hold (1 suggested transfers, 0 hits)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
