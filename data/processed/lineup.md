@@ -10,16 +10,16 @@
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
 | Darlow | MUN | GK | 4.5 | 4.85 | 40.77 |  |
+| Cash | AVL | DEF | 4.5 | 6.21 | 39.82 |  |
+| Bijol | LEE | DEF | 5.0 | 5.99 | 41.07 |  |
 | Canvot | CRY | DEF | 5.0 | 6.01 | 43.03 |  |
 | Virgil | LIV | DEF | 6.5 | 5.96 | 38.68 |  |
-| Bijol | LEE | DEF | 5.0 | 5.99 | 41.07 |  |
 | Shaw | MUN | DEF | 4.5 | 5.69 | 36.41 |  |
-| Cash | AVL | DEF | 4.5 | 6.21 | 39.82 |  |
 | B.Fernandes | MUN | MID | 12.0 | 10.42 | 37.33 | (C) |
 | Szoboszlai | LIV | MID | 7.0 | 4.64 | 33.14 |  |
 | E.Le Fée | SUN | MID | 6.0 | 4.4 | 32.17 |  |
-| Calvert-Lewin | LEE | FWD | 6.0 | 4.04 | 31.28 |  |
 | Watkins | AVL | FWD | 8.0 | 4.88 | 35.68 | (VC) |
+| Calvert-Lewin | LEE | FWD | 6.0 | 4.04 | 31.28 |  |
 
 ## Bench
 
