@@ -1,43 +1,43 @@
-# GW1 Lineup
+# GW2 Lineup
 
-- **Bank:** £3.0m
+- **Bank:** £2.0m
 - **Hits:** 0
-- **Squad Value:** £97.0m
-- **XI Expected Points (incl. captain):** 62.2
+- **Squad Value:** £98.0m
+- **XI Expected Points (incl. captain):** 57.6
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Darlow | MUN | GK | 4.5 | 4.87 | 40.65 |  |
-| Canvot | CRY | DEF | 5.0 | 6.32 | 43.17 |  |
-| Virgil | LIV | DEF | 6.5 | 5.86 | 38.38 |  |
-| Bijol | LEE | DEF | 5.0 | 6.1 | 41.18 |  |
-| Shaw | MUN | DEF | 4.5 | 5.47 | 36.39 |  |
-| Cash | AVL | DEF | 4.5 | 5.9 | 39.8 |  |
-| B.Fernandes | MUN | MID | 12.0 | 4.9 | 36.45 | (VC) |
-| Szoboszlai | LIV | MID | 7.0 | 4.43 | 33.03 |  |
-| E.Le Fée | SUN | MID | 6.0 | 4.3 | 32.27 |  |
-| Calvert-Lewin | LEE | FWD | 6.0 | 4.2 | 30.84 |  |
-| Watkins | AVL | FWD | 8.0 | 9.87 | 36.02 | (C) |
+| Darlow | MUN | GK | 4.5 | 6.42 | 50.38 |  |
+| Canvot | CRY | DEF | 5.0 | 4.48 | 42.2 |  |
+| Matheus N. | MCI | DEF | 6.0 | 5.51 | 40.5 |  |
+| Cash | AVL | DEF | 4.5 | 4.48 | 38.17 |  |
+| Shaw | MUN | DEF | 4.5 | 5.69 | 43.99 |  |
+| Virgil | LIV | DEF | 6.5 | 4.61 | 37.58 |  |
+| Szoboszlai | LIV | MID | 7.0 | 4.03 | 32.91 |  |
+| Saka | ARS | MID | 9.5 | 3.86 | 33.68 |  |
+| B.Fernandes | MUN | MID | 12.0 | 10.07 | 38.38 | (C) |
+| Watkins | AVL | FWD | 8.0 | 4.57 | 35.94 | (VC) |
+| Calvert-Lewin | LEE | FWD | 6.0 | 3.85 | 30.95 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Pope | NEW | GK | 5.0 | 4.0 | 38.94 |  |
-| Bruno G. | ARS | MID | 7.0 | 2.89 | 27.25 |  |
-| Saka | ARS | MID | 9.5 | 3.34 | 32.32 |  |
-| Mateta | CRY | FWD | 6.5 | 3.58 | 24.53 |  |
+| Pope | NEW | GK | 5.0 | 6.15 | 41.07 |  |
+| Bruno G. | ARS | MID | 7.0 | 3.05 | 28.23 |  |
+| E.Le Fée | SUN | MID | 6.0 | 3.64 | 31.81 |  |
+| Mateta | CRY | FWD | 6.5 | 2.55 | 24.28 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Hirst | Mateta |
+| Bijol | Matheus N. |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW3 — B.Fernandes (+6.3 pts)
-- **Bench Boost:** GW6 (+16.9 pts)
+- **Triple Captain:** GW6 — B.Fernandes (+6.5 pts)
+- **Bench Boost:** GW6 (+17.0 pts)
 - **Wildcard:** hold (1 suggested transfers, 0 hits)
