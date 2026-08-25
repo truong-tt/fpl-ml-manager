@@ -1,44 +1,44 @@
 # GW2 Lineup
 
-- **Bank:** £4.0m
+- **Bank:** £0.5m
 - **Hits:** 0
-- **Squad Value:** £96.0m
-- **XI Expected Points (incl. captain):** 59.0
+- **Squad Value:** £99.5m
+- **XI Expected Points (incl. captain):** 30.1
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Darlow | MUN | GK | 4.5 | 6.55 | 48.58 |  |
-| Canvot | CRY | DEF | 5.0 | 4.63 | 42.08 |  |
-| Shaw | MUN | DEF | 4.5 | 5.5 | 41.43 |  |
-| Virgil | LIV | DEF | 6.5 | 4.47 | 38.09 |  |
-| Botman | NEW | DEF | 5.0 | 5.14 | 40.61 |  |
-| Cash | AVL | DEF | 4.5 | 6.1 | 43.38 |  |
-| Szoboszlai | LIV | MID | 7.0 | 4.0 | 33.55 |  |
-| Ndiaye | EVE | MID | 6.0 | 4.48 | 33.76 | (VC) |
-| B.Fernandes | MUN | MID | 12.0 | 9.81 | 37.72 | (C) |
-| Saka | ARS | MID | 9.5 | 4.17 | 33.74 |  |
-| Watkins | AVL | FWD | 8.0 | 4.15 | 33.49 |  |
+| Darlow | MUN | GK | 4.5 | 1.9 | 5.38 |  |
+| Cash | AVL | DEF | 4.5 | 2.95 | 10.01 |  |
+| Virgil | LIV | DEF | 6.5 | 2.07 | 16.58 |  |
+| Colwill | CHE | DEF | 5.0 | 3.7 | 16.31 |  |
+| Shaw | MUN | DEF | 4.5 | 3.05 | 11.85 |  |
+| Canvot | CRY | DEF | 5.0 | 2.07 | 9.47 |  |
+| Palmer | CHE | MID | 9.5 | 6.0 | 14.29 | (C) |
+| B.Fernandes | MUN | MID | 12.0 | 2.83 | 11.71 | (VC) |
+| Calvert-Lewin | LEE | FWD | 6.0 | 2.49 | 7.97 |  |
+| Mateta | CRY | FWD | 6.5 | 1.67 | 6.81 |  |
+| Watkins | AVL | FWD | 8.0 | 1.33 | 6.17 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Pope | NEW | GK | 5.0 | 6.2 | 45.54 |  |
-| E.Le Fée | SUN | MID | 6.0 | 3.54 | 32.23 |  |
-| Calvert-Lewin | LEE | FWD | 6.0 | 3.84 | 30.74 |  |
-| Mateta | CRY | FWD | 6.5 | 3.23 | 24.42 |  |
+| Pope | NEW | GK | 5.0 | 0.0 | 3.09 |  |
+| Saka | ARS | MID | 9.5 | 0.54 | 13.99 |  |
+| Ndiaye | EVE | MID | 6.0 | 0.61 | 12.84 |  |
+| Szoboszlai | LIV | MID | 7.0 | 0.87 | 15.95 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Bruno G. | Ndiaye |
-| Matheus N. | Botman |
+| E.Le Fée | Palmer |
+| Botman | Colwill |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW4 — B.Fernandes (+6.3 pts)
-- **Bench Boost:** GW4 (+17.3 pts)
+- **Triple Captain:** GW8 — Saka (+4.7 pts)
+- **Bench Boost:** GW6 (+8.5 pts)
 - **Wildcard:** hold (2 suggested transfers, 0 hits)
