@@ -1,41 +1,45 @@
-# GW2 Lineup
+# GW3 Lineup
 
-- **Bank:** £5.5m
+- **Bank:** £5.0m
 - **Hits:** 0
-- **Squad Value:** £94.5m
-- **XI Expected Points (incl. captain):** 31.2
+- **Squad Value:** £95.0m
+- **XI Expected Points (incl. captain):** 26.5
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Darlow | MUN | GK | 4.5 | 2.04 | 5.19 |  |
-| Cash | AVL | DEF | 4.5 | 2.9 | 9.48 |  |
-| Dasilva | COV | DEF | 4.0 | 3.18 | 8.95 |  |
-| Colwill | CHE | DEF | 5.0 | 3.41 | 15.41 |  |
-| Canvot | CRY | DEF | 5.0 | 1.99 | 8.37 |  |
-| Thomas | COV | DEF | 4.0 | 3.06 | 8.99 |  |
-| Rudoni | COV | MID | 5.0 | 2.01 | 7.67 |  |
-| Palmer | CHE | MID | 9.6 | 5.99 | 14.55 | (C) |
-| B.Fernandes | MUN | MID | 12.0 | 2.82 | 11.9 | (VC) |
-| Watkins | AVL | FWD | 7.9 | 1.38 | 6.07 |  |
-| Calvert-Lewin | LEE | FWD | 6.0 | 2.45 | 8.93 |  |
+| Darlow | MUN | GK | 4.5 | 0.53 | 3.13 |  |
+| Struijk | BHA | DEF | 5.0 | 4.03 | 17.63 |  |
+| Colwill | CHE | DEF | 5.0 | 0.78 | 13.37 |  |
+| Hadjam | BHA | DEF | 4.5 | 3.93 | 17.85 |  |
+| Thomas | COV | DEF | 4.0 | 0.81 | 10.67 |  |
+| Groß | BHA | MID | 5.5 | 7.42 | 17.55 | (C) |
+| Palmer | CHE | MID | 9.6 | 1.72 | 13.38 |  |
+| B.Fernandes | MUN | MID | 12.0 | 1.76 | 9.62 |  |
+| Saka | ARS | MID | 9.5 | 3.21 | 15.72 | (VC) |
+| Calvert-Lewin | LEE | FWD | 6.0 | 1.46 | 9.95 |  |
+| Watkins | AVL | FWD | 7.9 | 0.8 | 5.64 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Pope | NEW | GK | 5.0 | 0.0 | 3.17 |  |
-| Saka | ARS | MID | 9.5 | 0.54 | 13.28 |  |
-| Ndiaye | EVE | MID | 6.0 | 0.59 | 13.17 |  |
-| Mateta | CRY | FWD | 6.5 | 0.0 | 5.0 |  |
+| Pope | NEW | GK | 5.0 | 0.0 | 4.9 |  |
+| Dasilva | COV | DEF | 4.0 | 0.78 | 10.79 |  |
+| Ndiaye | EVE | MID | 6.0 | 0.68 | 14.94 |  |
+| Mateta | CRY | FWD | 6.5 | 0.0 | 6.13 |  |
 
 ## Transfers
 
-_Hold — no transfer beats a 4-pt hit._
+| Out | In |
+| --- | --- |
+| Cash | Struijk |
+| Canvot | Groß |
+| Rudoni | Hadjam |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW5 — Ndiaye (+4.8 pts)
-- **Bench Boost:** GW5 (+8.1 pts)
-- **Wildcard:** hold (0 suggested transfers, 0 hits)
+- **Triple Captain:** GW3 — Groß (+5.1 pts)
+- **Bench Boost:** GW5 (+6.4 pts)
+- **Wildcard:** hold (3 suggested transfers, 0 hits)
