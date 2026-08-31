@@ -1,43 +1,43 @@
 # GW3 Lineup
 
-- **Bank:** £12.0m
+- **Bank:** £10.5m
 - **Hits:** 0
-- **Squad Value:** £88.0m
-- **XI Expected Points (incl. captain):** 6.6
+- **Squad Value:** £89.5m
+- **XI Expected Points (incl. captain):** 29.6
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Darlow | MUN | GK | 4.5 | 0.0 | 0.0 |  |
-| Struijk | BHA | DEF | 5.0 | 0.93 | 1.8 |  |
-| Dasilva | COV | DEF | 4.0 | 0.23 | 6.11 |  |
-| Hadjam | BHA | DEF | 4.5 | 0.91 | 1.79 |  |
-| Thomas | COV | DEF | 4.0 | 0.24 | 6.18 |  |
-| Palmer | CHE | MID | 9.6 | 0.29 | 2.03 |  |
-| Ömür | HUL | MID | 5.0 | 2.05 | 6.97 | (C) |
-| Groß | BHA | MID | 5.5 | 0.57 | 1.85 |  |
-| Saka | ARS | MID | 9.5 | 0.7 | 5.62 | (VC) |
-| Calvert-Lewin | LEE | FWD | 6.0 | 0.3 | 2.38 |  |
-| Watkins | AVL | FWD | 7.9 | 0.41 | 0.41 |  |
+| Darlow | MUN | GK | 4.5 | 0.81 | 4.3 |  |
+| Struijk | BHA | DEF | 5.0 | 3.98 | 15.42 |  |
+| Khusanov | MCI | DEF | 5.5 | 2.82 | 17.0 |  |
+| Hadjam | BHA | DEF | 4.5 | 3.8 | 15.3 |  |
+| Ndiaye | EVE | MID | 6.0 | 2.14 | 13.86 |  |
+| Palmer | CHE | MID | 9.6 | 1.26 | 13.81 |  |
+| Groß | BHA | MID | 5.5 | 7.53 | 15.51 | (C) |
+| Saka | ARS | MID | 9.5 | 3.17 | 16.01 | (VC) |
+| Ömür | HUL | MID | 5.0 | 1.71 | 11.69 |  |
+| Watkins | AVL | FWD | 7.9 | 0.8 | 6.12 |  |
+| Calvert-Lewin | LEE | FWD | 6.0 | 1.55 | 11.38 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Pope | NEW | GK | 5.0 | 0.0 | 0.0 |  |
-| Colwill | CHE | DEF | 5.0 | 0.0 | 2.67 |  |
-| Ndiaye | EVE | MID | 6.0 | 0.0 | 3.46 |  |
-| Mateta | CRY | FWD | 6.5 | 0.0 | 2.39 |  |
+| Pope | NEW | GK | 5.0 | 0.0 | 5.06 |  |
+| Colwill | CHE | DEF | 5.0 | 0.74 | 14.84 |  |
+| Dasilva | COV | DEF | 4.0 | 0.78 | 9.18 |  |
+| Mateta | CRY | FWD | 6.5 | 0.0 | 5.07 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| B.Fernandes | Ömür |
+| Thomas | Khusanov |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW10 — Saka (+2.7 pts)
-- **Bench Boost:** GW4 (+2.6 pts)
+- **Triple Captain:** GW3 — Groß (+5.2 pts)
+- **Bench Boost:** GW4 (+7.0 pts)
 - **Wildcard:** hold (1 suggested transfers, 0 hits)
