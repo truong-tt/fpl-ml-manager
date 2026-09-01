@@ -1,41 +1,45 @@
 # GW3 Lineup
 
-- **Bank:** £10.5m
-- **Hits:** 0
-- **Squad Value:** £89.5m
-- **XI Expected Points (incl. captain):** 29.6
+- **Bank:** £8.7m
+- **Hits:** -4 pts
+- **Squad Value:** £91.3m
+- **XI Expected Points (incl. captain):** 54.0
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Darlow | MUN | GK | 4.5 | 0.86 | 4.36 |  |
-| Struijk | BHA | DEF | 5.0 | 3.98 | 15.42 |  |
-| Khusanov | MCI | DEF | 5.5 | 2.82 | 16.99 |  |
-| Hadjam | BHA | DEF | 4.5 | 3.8 | 15.3 |  |
-| Ndiaye | EVE | MID | 6.0 | 2.14 | 13.86 |  |
-| Palmer | CHE | MID | 9.6 | 1.26 | 13.81 |  |
-| Groß | BHA | MID | 5.5 | 7.53 | 15.51 | (C) |
-| Saka | ARS | MID | 9.5 | 3.17 | 16.01 | (VC) |
-| Ömür | HUL | MID | 5.0 | 1.71 | 11.69 |  |
-| Watkins | AVL | FWD | 7.9 | 0.8 | 6.12 |  |
-| Calvert-Lewin | LEE | FWD | 6.0 | 1.55 | 11.37 |  |
+| Horníček | NEW | GK | 5.0 | 6.59 | 44.32 |  |
+| Colwill | CHE | DEF | 5.0 | 1.23 | 21.83 |  |
+| Guéhi | MCI | DEF | 6.0 | 6.32 | 42.8 |  |
+| Dasilva | COV | DEF | 4.0 | 2.29 | 22.43 |  |
+| Murillo | NFO | DEF | 5.5 | 5.76 | 41.63 |  |
+| Khusanov | MCI | DEF | 5.5 | 4.23 | 27.0 |  |
+| Palmer | CHE | MID | 9.6 | 3.79 | 40.21 |  |
+| Groß | BHA | MID | 5.5 | 11.52 | 40.7 | (C) |
+| Saka | ARS | MID | 9.5 | 5.45 | 37.48 | (VC) |
+| Ndiaye | EVE | MID | 6.0 | 4.53 | 36.5 |  |
+| Calvert-Lewin | LEE | FWD | 6.0 | 2.24 | 21.75 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Pope | NEW | GK | 5.0 | 0.0 | 5.06 |  |
-| Colwill | CHE | DEF | 5.0 | 0.74 | 14.83 |  |
-| Dasilva | COV | DEF | 4.0 | 0.78 | 9.18 |  |
-| Mateta | CRY | FWD | 6.5 | 0.0 | 5.07 |  |
+| Darlow | MUN | GK | 4.5 | 0.58 | 1.88 |  |
+| Ömür | HUL | MID | 5.0 | 0.53 | 3.86 |  |
+| Mateta | CRY | FWD | 6.4 | 0.0 | 19.66 |  |
+| Watkins | AVL | FWD | 7.8 | 0.0 | 0.0 |  |
 
 ## Transfers
 
-_Hold — no transfer beats a 4-pt hit._
+| Out | In |
+| --- | --- |
+| Struijk | Murillo |
+| Pope | Guéhi |
+| Hadjam | Horníček |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW3 — Groß (+5.2 pts)
-- **Bench Boost:** GW4 (+7.0 pts)
-- **Wildcard:** hold (0 suggested transfers, 0 hits)
+- **Triple Captain:** GW4 — Palmer (+8.2 pts)
+- **Bench Boost:** GW9 (+3.8 pts)
+- **Wildcard:** hold (3 suggested transfers, 1 hits)
