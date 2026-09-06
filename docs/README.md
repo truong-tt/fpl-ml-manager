@@ -36,23 +36,27 @@ End-to-end: data refresh → features/models → projection frame → MILP/chips
 
 ```mermaid
 flowchart TD
-    A["FPL-Core-Insights CSVs + live FPL API overlay"]
-    B["1. Data Loader<br/>src/data_loader.py"]
-    C["2. Features<br/>src/features.py<br/>ClubElo + EMA team/player + Opta"]
-    D["3a. Match Model<br/>src/train_match_model.py<br/>2× Poisson XGB"]
-    E["3b. Points Model<br/>src/train_points_model.py<br/>4 pos × 3 quantiles = 12 boosters"]
-    M["3c. Minutes<br/>src/train_minutes_model.py<br/>P(plays) × E[mins/90|plays]"]
-    N["3d. Bonus<br/>src/train_bonus_model.py<br/>3-quantile on bonus col"]
-    F["4. Engine<br/>src/fpl_engine.py<br/>joint MC → μ, s, cap_xp"]
-    G["5. MILP<br/>src/optimizer.py<br/>H=8 RHC"]
-    H["6. Chips<br/>src/chips.py"]
-    I["lineup.md + squad_snapshot.csv"]
-    A --> B --> C
-    C --> D & E & M & N
-    D & E & M & N --> F --> G --> H --> I
+    A["FPL-Core-Insights + official live overlays"] --> B["Data loader<br/>data_loader.py"]
+    B --> C["Gameweek status<br/>gameweeks.py"]
+    C --> D["Model preparation<br/>model_preparation.py"]
+    D --> E["Match, points, minutes and bonus training<br/>train_*_model.py"]
+    E --> F["Artifact validation + recalibration"]
+    F --> G["Projection engine<br/>fpl_engine.py"]
+    G --> H["Squad and transfer optimization<br/>optimizer.py"]
+    H --> I["Chip revision + free-transfer carry<br/>chips.py"]
+    I --> J["Lineup report + squad snapshot"]
+    C --> K["Workflow gate, backtest and replay"]
 ```
 
-Artifacts persist under `data/`. [src/main.py](../src/main.py) owns model schema checks (`_ensure_models`), stale recalibration (`_maybe_recalibrate`), and the live/imminent GW lockout (`_gw_in_play`).
+[src/main.py](../src/main.py) coordinates the weekly run. The main responsibilities are:
+
+| Module | Responsibility |
+| --- | --- |
+| [Gameweek finalization](../src/gameweeks.py) | Shared completed/finalized status for the pipeline, workflow gate, backtest and replay; missing review evidence does not finalize a Gameweek |
+| [Model preparation](../src/model_preparation.py) | Validate every model artifact and feature order, train when needed, refresh calibration, then load the projection engine |
+| [Chip decisions](../src/chips.py) | Revise the current pending chip, select at most one chip, persist the ledger and compute free-transfer carry |
+
+Artifacts persist under `data/`. Model preparation invalidates readiness before retraining and writes the season/Gameweek marker after preparation and engine loading succeed. Insufficient training data fails explicitly. See [CONTEXT.md](../CONTEXT.md) for the domain glossary.
 
 ---
 
@@ -156,7 +160,7 @@ Optimizer needs scalar μ + dispersion s per (i, t). FPL right-skewed → median
 
 Dispersion: central mass ≈ Gaussian → q10–q90 ≈ 2.56 σ. Emit **std** $s = (q_{90} - q_{10}) / 2.56$, not variance (CBC LP-only, no MIQP). Linear `−λ·s` penalty keeps risk on EV scale; $s^2$ would over-punish ceilings.
 
-### 4.5 Captaincy score
+### 4.5 Captaincy score (deterministic fallback)
 
 Separate from XI selection. Anchor on μ + fraction of upside:
 
@@ -164,7 +168,7 @@ $$
 \kappa = \mu + \gamma (q_{90} - \mu), \quad \gamma = 0.3
 $$
 
-`CAP_UPSIDE_WEIGHT` in [src/fpl_engine.py](../src/fpl_engine.py). Lower (0.2) → safer; higher (0.5+) → boom-chase.
+`CAP_UPSIDE_WEIGHT` in [src/fpl_engine.py](../src/fpl_engine.py) controls this score when `mc_samples=0`. The default Monte Carlo path uses the sampled 90th percentile for `cap_xp` (section 4.9).
 
 ### 4.6 Isotonic points recalib
 
@@ -186,7 +190,7 @@ Auto-loaded by `predict_quantiles` after row-sort, before sanity clip. Non-cross
 
 Per-position monotone isotonic map on raw minutes/90 booster. Fit on walk-forward `minutes_pred.csv` per pos_id ∈ {1..4} via `IsotonicRegression(out_of_bounds="clip", y_min=0, y_max=1)` ([src/recalibrate_minutes.py](../src/recalibrate_minutes.py)). Target = binary `played`; raw `mins_pred` treated as $P(\text{played})$. Knots → `data/minutes_recalib.json`.
 
-`predict_minutes(..., apply_recalib=True)` auto-loads, linear-interp between knots, then multiplied onto quantiles in [src/fpl_engine.py](../src/fpl_engine.py). FPL `chance_of_playing_next_round` upper bound untouched.
+`predict_minutes(..., apply_recalib=True)` loads the map and interpolates between knots to calibrate `mins_pred`. It leaves the separate `plays` output unchanged; the engine uses `plays` for the mixture-quantile transform (section 4.3). The FPL `chance_of_playing_next_round` upper bound applies to both outputs for the immediate Gameweek.
 
 ### 4.8 Bonus head (variance-additive combine)
 
@@ -296,15 +300,15 @@ Only $t_0$ executed: `transfers_in/out`, `xi_ids`, `captain`, `vice`, `hits`. Ne
 
 Self-maintaining: there is no linked FPL entry to sync from, so the pipeline is the manager. `commit_chip` in [src/chips.py](../src/chips.py) records a chip when its recommendation lands on the **current** GW and clears the trigger it shares with the replay (`TC_TRIGGER_PREMIUM = 4.5` on the captain's `cap_xp − xp`, `BB_TRIGGER_BENCH_EV = 10.0` on the bench sum, ≥2 blanking teams for FH, the existing ≥4-transfers/≥2-hits rule for WC). Recommendations for a *future* GW stay advisory and are never recorded.
 
-The current GW's entry is **provisional**: its deadline has not passed, so the chip is not actually spent yet. `withdraw_pending` clears it at the top of each run — before the recommenders read the ledger, or they would treat it as spent and refuse to re-propose it — and `commit_chip` then re-decides from current data. Midweek news can therefore change or withdraw the call, while entries for earlier GWs are past their deadline and frozen. At most one chip per GW survives either way, and WC/FH outrank the points-uplift chips when several fire together. Hand-edit the file to correct a call or to pre-record a chip played outside the pipeline.
+`decide_chips` owns the full revision sequence. The current GW's entry is **provisional**: its deadline has not passed, so the chip is not actually spent yet. `withdraw_pending` clears it at the top of each run — before the recommenders read the ledger, or they would treat it as spent and refuse to re-propose it — and `commit_chip` then re-decides from current data. Midweek news can therefore change or withdraw the call, while entries for earlier GWs are past their deadline and frozen. At most one chip per GW survives either way, and WC/FH outrank the points-uplift chips when several fire together. Hand-edit the file to correct a call or to pre-record a chip played outside the pipeline.
 
-Two effects on the weekly recommendations:
+The weekly chip decision enforces:
 
 - **Set clamp** (needs no config). Each recommender only scans horizon GWs in the *current* set. Without it an H=8 scan from GW16 reaches GW23 and can propose a set-1 chip for a GW where set 1 has already expired.
 - **Availability.** A spent token suppresses that chip's recommendation for the rest of its half; the set-2 copy is unaffected. FH additionally skips the GW immediately after any recorded FH — the live case is FH1 at GW19 blocking FH2 at GW20.
 - **Ordering.** The free-transfer carry runs *after* `commit_chip`, so a WC or FH recorded on the current run preserves that week's banked FTs.
 
-**Free-transfer carry** (`carry_free_transfers` in [src/main.py](../src/main.py)). A transfer consumes only the FTs actually spent — 1 of 3 banked leaves 2, then +1 = 3 — and under 2026/27 a WC or FH week does not reset the bank at all. Transfers beyond the FTs available are hits: they cost points, not bank. Cap 5.
+**Free-transfer carry** (`carry_free_transfers` in [src/chips.py](../src/chips.py), called within `decide_chips`). A transfer consumes only the FTs actually spent — 1 of 3 banked leaves 2, then +1 = 3 — and under 2026/27 a WC or FH week does not reset the bank at all. Transfers beyond the FTs available are hits: they cost points, not bank. Cap 5.
 
 **Replay** ([src/season_replay.py](../src/season_replay.py)): applies the same one-chip-per-GW rule, compares TC/BB/WC/FH uplift, gates expensive WC/FH alt-solves to configured attempt windows plus GW19/GW38 force-fire, and writes `data/season_replay.csv` + `data/processed/season_replay.md`.
 
@@ -331,9 +335,21 @@ Per quantile: empirical coverage $P(y \leq q_\alpha)$, gap from $\alpha$, pinbal
 
 Per side on held-out fixtures: marginal Poisson NLL, goal MAE, CS Brier, CS rate gap. CS = $e^{-\lambda_\text{opp}}$. Persistent CS bias → tune λ-head hyperparams or add stronger defensive features.
 
-### 7.4 Unit tests
+### 7.4 Automated checks
 
-[tests/](../tests/) covers season rollover, the workflow gate, and the preseason projection baseline. Run `python -m unittest discover -s tests`. [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs it on every PR and push to `main` (skipped for `data/**`-only commits).
+[tests/](../tests/) covers season rollover, finalization parity, the preseason projection baseline, chip revision and transfer carry, model preparation and failure recovery, and pipeline skip reporting.
+
+```bash
+python -m unittest discover -s tests -v
+python scripts/check_pipeline.py
+python src/source_check.py
+```
+
+The [pipeline smoke check](../scripts/check_pipeline.py) copies tracked data and models into temporary storage, simulates an actionable deadline, and requires a newly generated lineup from the real preparation, projection, optimizer and chip paths. It does not refresh sources or publish outputs. Production skip behavior is tested separately.
+
+The [source check](../src/source_check.py) uses a fresh temporary cache and production normalization to verify current-season teams, players, fixtures and finalized player history. Missing primary data fails the check; availability of the optional official player and fixture overlays is reported explicitly.
+
+[CI](../.github/workflows/ci.yml) runs compilation, tests and the pipeline smoke check on PRs, pushes to `main` excluding `data/**`-only commits, and manual dispatch. [Source Health](../.github/workflows/source_check.yml) runs the network check daily and on manual dispatch. [Verification evidence](verification-2026-09-06.md) records the observed 2026/27 data and inspected GitHub runs.
 
 ### 7.5 Minutes audit
 
@@ -345,33 +361,39 @@ Walk-forward held-out mins/90 + binary `played`: MAE, ROC-AUC, Brier, 10-bin rel
 
 ```text
 fpl-ml-manager/
+|-- CONTEXT.md                   # Domain glossary
 |-- src/
-|   |-- main.py                  # Pipeline entrypoint + report writer
-|   |-- data_loader.py           # FPL-CI + live FPL API ingest
+|   |-- main.py                  # Weekly pipeline and report writer
+|   |-- data_loader.py           # Current and historical ingest
+|   |-- gameweeks.py             # Shared completion/finalization rules
+|   |-- model_preparation.py     # Model and calibration readiness
+|   |-- source_check.py          # Live current-season source check
 |   |-- features.py              # Elo, rolling, Opta, stakes, cup congestion
 |   |-- train_*_model.py         # Match, points, minutes, bonus heads
-|   |-- fpl_engine.py            # Projection frame + joint MC
-|   |-- optimizer.py             # MILP + RHC
-|   |-- chips.py                 # TC/BB/FH/WC heuristics
-|   |-- backtest.py, calibration.py
-|   |-- recalibrate_*.py
+|   |-- fpl_engine.py            # Projection frame and joint Monte Carlo
+|   |-- optimizer.py             # MILP and receding-horizon transfers
+|   |-- chips.py                 # Chip decisions and free-transfer carry
+|   |-- backtest.py, calibration.py, recalibrate_*.py
 |   `-- league_table.py, fit_team_rho.py, season_replay.py, workflow_gate.py
+|-- scripts/
+|   `-- check_pipeline.py        # Isolated real-model lineup smoke check
 |-- data/
 |   |-- players.csv, teams.csv, fixtures.csv, history.csv
 |   |-- cup_fixtures.csv, fixture_lambdas.csv, team_rho.json
 |   |-- xgb_*.json, model_state.json, points_recalib.json, minutes_recalib.json
-|   |-- chip_state.json           # chips played (self-maintaining ledger)
-|   |-- season_replay.csv
+|   |-- chip_state.json, season_replay.csv
 |   `-- processed/
 |       |-- lineup.md, squad_snapshot.csv, season_replay.md
 |       `-- backtest/
 |-- tests/
-|   `-- test_rollover.py         # Season-rollover + preseason baseline unit tests
+|   |-- test_rollover.py
+|   `-- test_architecture.py
 |-- docs/
-|   |-- README.md
-|   `-- FPL_101.md
+|   |-- README.md, FPL_101.md
+|   `-- verification-2026-09-06.md
 `-- .github/workflows/
-    |-- ci.yml                   # compileall + unittest on PR/push
+    |-- ci.yml
+    |-- source_check.yml
     |-- pipeline.yml
     `-- season_replay.yml
 ```
@@ -396,13 +418,13 @@ pip install -r requirements.txt
 python src/main.py
 ```
 
-First run trains every missing artifact. Later runs reuse compatible `data/*.json` models and write [data/processed/lineup.md](../data/processed/lineup.md) + [data/processed/squad_snapshot.csv](../data/processed/squad_snapshot.csv).
+Actionable runs prepare all required artifacts, reusing compatible models or retraining when the season, finalized Gameweek or feature schema changes, then write [data/processed/lineup.md](../data/processed/lineup.md) + [data/processed/squad_snapshot.csv](../data/processed/squad_snapshot.csv).
 
 Chips played are recorded automatically in [data/chip_state.json](../data/chip_state.json) (§6). Edit it by hand only to correct a misfire or to pre-record a chip played outside the pipeline.
 
 ### Recalibration
 
-Auto via `_maybe_recalibrate(...)` when recalibration JSONs are missing or older than `RECALIB_STALE_DAYS` (= 14). Useful commands:
+The model-preparation module refreshes calibration when its JSONs are missing or older than `RECALIB_STALE_DAYS` (= 14). Retraining points or minutes invalidates the corresponding map. Useful commands:
 
 ```bash
 rm data/points_recalib.json data/minutes_recalib.json
@@ -416,9 +438,11 @@ python src/backtest.py --k 8 --minutes-recalib data/minutes_recalib.json
 
 ### Scheduled
 
-[.github/workflows/pipeline.yml](../.github/workflows/pipeline.yml) runs 05:30 + 17:30 UTC, skips live/imminent GWs, defers model/lineup work while scores await official `data_checked` review, and stops once current-season GW38 is finalized.
+[Daily Update](../.github/workflows/pipeline.yml) runs at 05:30 and 17:30 UTC. It skips live/imminent GWs, defers model/lineup work while scores await official review, and stops once current-season GW38 is finalized. The job publishes a lineup only when that invocation reports `generated=true`; successful pipeline skips report their reason.
 
-[.github/workflows/season_replay.yml](../.github/workflows/season_replay.yml) auto-fires after successful pipeline runs, but only replays when `fixtures.csv` has a newly finalized GW beyond the same-season rows in `data/season_replay.csv`. Both writers share one concurrency group; manual `workflow_dispatch` still runs on demand.
+[.github/workflows/season_replay.yml](../.github/workflows/season_replay.yml) auto-fires after successful pipeline runs, but only replays when `fixtures.csv` has a newly finalized GW beyond the same-season rows in `data/season_replay.csv`. Both writers share one concurrency group; manual `workflow_dispatch` still runs on demand. Replay skips are recorded in the job summary.
+
+[Source Health](../.github/workflows/source_check.yml) checks primary-source normalization and reports optional overlay availability at 06:45 UTC daily. It has read-only repository permissions and does not publish data or lineup changes.
 
 ---
 

@@ -11,6 +11,7 @@ stamped with a previous season = nothing used yet.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -245,3 +246,50 @@ def commit_chip(gw: int, proj: pd.DataFrame, tc: dict, bb: dict, fh: dict,
     if used != load_chip_state(path):
         save_chip_state(used, path)
     return token
+
+
+def carry_free_transfers(ft: int, n_in: int, gw: int,
+                         chip_used: dict[str, int]) -> int:
+    """FTs entering next GW, per 2026/27 rules.
+
+    A transfer consumes only the FTs actually spent — using 1 of 3 banked
+    leaves 2, not 0 — and playing WC or FH no longer resets the bank at all.
+    Transfers beyond the FTs available are hits: they cost points, not bank.
+    Cap is 5 banked.
+    """
+    on_chip = any(chip_used.get(chip_token(k, gw)) == gw for k in ("wc", "fh"))
+    consumed = 0 if on_chip else min(n_in, ft)
+    return min(5, ft - consumed + 1)
+
+
+@dataclass(frozen=True)
+class ChipDecision:
+    tc: dict
+    bb: dict
+    fh: dict
+    wc: dict
+    played: str | None
+    next_ft: int
+
+
+def decide_chips(proj: pd.DataFrame, fixtures: pd.DataFrame, gw: int,
+                 squad_ids: set[int], xi_ids: set[int], *, horizon: int,
+                 transfers_in: list[int], hits: int,
+                 free_transfers: int | None,
+                 path: Path | None = None) -> ChipDecision:
+    """Revise this GW's intent, persist its chip, and account for transfers.
+
+    Previous GWs remain spent. Callers cannot accidentally recommend against
+    pending intent or calculate carry before the replacement chip is selected.
+    None free_transfers denotes a new squad, which starts next GW with one.
+    """
+    used = load_chip_state(path)
+    withdraw_pending(used, gw)
+    tc = recommend_triple_captain(proj, squad_ids, gw, used)
+    bb = recommend_bench_boost(proj, squad_ids, xi_ids, gw, used)
+    fh = recommend_free_hit(fixtures, gw, horizon, used)
+    wc = recommend_wildcard(transfers_in, hits, gw, used)
+    played = commit_chip(gw, proj, tc, bb, fh, wc, used, path)
+    next_ft = (1 if free_transfers is None else
+               carry_free_transfers(free_transfers, len(transfers_in), gw, used))
+    return ChipDecision(tc, bb, fh, wc, played, next_ft)

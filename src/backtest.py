@@ -19,6 +19,7 @@ import pandas as pd
 import xgboost as xgb
 
 from data_loader import SCORING_REGIME_START, SEASON
+from gameweeks import from_frame
 from features import (build_match_features, build_player_features,
                       match_feature_cols, minutes_feature_cols,
                       points_feature_cols)
@@ -48,13 +49,7 @@ MINUTES_ROUNDS = 300
 
 
 def _finished_gws(fixtures: pd.DataFrame, season: str = SEASON) -> list[int]:
-    fx = fixtures[fixtures["season"] == season].copy() if "season" in fixtures else fixtures.copy()
-    fin = fx["finished"].astype(str).str.lower().isin(["true", "1"])
-    if "data_checked" in fx.columns:
-        fin &= fx["data_checked"].astype(str).str.lower().isin(["true", "1"])
-    g = fx.assign(_fin=fin).groupby("event")["_fin"].agg(["sum", "size"])
-    full = g[g["sum"] == g["size"]].index.astype(int).tolist()
-    return sorted(full)
+    return list(from_frame(fixtures, season).finalized)
 
 
 def _resolve_holdout(fixtures: pd.DataFrame, k: int,

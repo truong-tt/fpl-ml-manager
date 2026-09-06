@@ -23,7 +23,7 @@ def train_match_models(
         finalized &= df["data_checked"].astype(str).str.lower().isin(("true", "1"))
     past = df[finalized].dropna(subset=["team_h_score", "team_a_score"])
     if past.empty:
-        return
+        raise RuntimeError("Insufficient finalized training data for match models")
     X = past[match_feature_cols()].astype(float)
     params = dict(objective="count:poisson", learning_rate=0.05, max_depth=4,
                   subsample=0.85, colsample_bytree=0.85, verbosity=0)

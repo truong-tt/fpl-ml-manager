@@ -83,7 +83,7 @@ def train_points_models() -> None:
     if "minutes" in train.columns:
         train = train[train["minutes"] > 0]
     if train.empty:
-        return
+        raise RuntimeError("Insufficient finalized training data for points models")
 
     train["_pos"] = _row_pos(train)
     feat_cols = _pos_feature_cols()
@@ -92,7 +92,7 @@ def train_points_models() -> None:
     for pos in POSITIONS:
         sub = train[train["_pos"] == pos]
         if len(sub) < 200:
-            continue
+            raise RuntimeError(f"Insufficient training rows for points position {pos}: {len(sub)}")
         X = sub[feat_cols].astype(float).fillna(0.0)
         y = sub["target"].astype(float)
         for q in QUANTILES:

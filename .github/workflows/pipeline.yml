@@ -44,6 +44,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run pipeline
+      id: pipeline
       if: ${{ steps.season_gate.outputs.season_done != 'true' }}
       # main.py calls refresh_data() internally, trains any missing models,
       # auto-recalibrates points/minutes heads when JSON > RECALIB_STALE_DAYS,
@@ -56,7 +57,7 @@ jobs:
       run: python src/workflow_gate.py season
 
     - name: Publish lineup to Job Summary
-      if: ${{ steps.season_gate.outputs.season_done != 'true' && steps.post_gate.outputs.season_done != 'true' && steps.post_gate.outputs.review_pending != 'true' }}
+      if: steps.pipeline.outputs.generated == 'true'
       run: cat data/processed/lineup.md >> $GITHUB_STEP_SUMMARY
 
     - name: Commit and push changes
@@ -69,7 +70,14 @@ jobs:
         git config --global user.email "bot@noreply.github.com"
 
         # Data CSVs, model artifacts, recalib JSONs, snapshot, lineup report.
-        git add -f data/*.csv data/*.json data/processed/lineup.md data/processed/squad_snapshot.csv 2>/dev/null || true
+        shopt -s nullglob
+        artifacts=(data/*.csv data/*.json)
+        if [ "${{ steps.pipeline.outputs.generated }}" = "true" ]; then
+          artifacts+=(data/processed/lineup.md data/processed/squad_snapshot.csv)
+        fi
+        if [ ${#artifacts[@]} -gt 0 ]; then
+          git add -f -- "${artifacts[@]}"
+        fi
 
         if git diff --staged --quiet; then
           echo "No changes to commit."

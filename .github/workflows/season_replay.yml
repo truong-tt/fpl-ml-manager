@@ -84,6 +84,7 @@ jobs:
         if: steps.gw.outputs.should_run != 'true'
         run: |
           echo "No new finalized GW since last replay (last_finalized=${{ steps.gw.outputs.last_finalized }}, last_replayed=${{ steps.gw.outputs.last_replayed }}). Skipping."
+          echo "Replay skipped: no new finalized GW (last finalized: ${{ steps.gw.outputs.last_finalized }}, last replayed: ${{ steps.gw.outputs.last_replayed }})." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run season replay
         if: steps.gw.outputs.should_run == 'true'

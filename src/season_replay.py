@@ -30,6 +30,8 @@ CLI:
 from __future__ import annotations
 
 import argparse
+
+from gameweeks import from_frame
 import builtins
 import functools
 from pathlib import Path
@@ -88,24 +90,8 @@ def _filter_history(history: pd.DataFrame, season: str, before_gw: int) -> pd.Da
 
 
 def _last_finished_gw(fixtures: pd.DataFrame, season: str) -> int:
-    """Max event N where EVERY fixture row with event==N is finished.
-
-    Strict finalized rule. Handles DGW (>10 fixtures for one event) and BGW
-    (<10) naturally. Must match the GW detection in
-    .github/workflows/season_replay.yml — otherwise the workflow skips runs
-    forever because the CSV's last_replayed gets pinned to a partial GW that
-    the workflow never reaches with its stricter rule.
-    """
-    fx = (fixtures[fixtures["season"] == season].copy()
-          if "season" in fixtures.columns else fixtures.copy())
-    if fx.empty:
-        return 0
-    fx["fin"] = fx["finished"].astype(str).str.lower().isin(("true", "1"))
-    if "data_checked" in fx.columns:
-        fx["fin"] &= fx["data_checked"].astype(str).str.lower().isin(("true", "1"))
-    by_event = fx.groupby("event")["fin"].all()
-    done = by_event[by_event].index.astype(int)
-    return int(done.max()) if len(done) else 0
+    """Latest officially finalized GW, using the same rules as workflow gating."""
+    return from_frame(fixtures, season).last_finalized
 
 
 def _one_gw_proj(proj: pd.DataFrame, gw: int) -> pd.DataFrame:

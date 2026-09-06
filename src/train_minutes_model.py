@@ -50,7 +50,7 @@ def train_minutes_model() -> None:
     fixture_feats = build_match_features(fx, hist, teams)
     train = build_player_features(hist, players, fixture_feats)
     if train.empty:
-        return
+        raise RuntimeError("Insufficient finalized training data for minutes models")
 
     cols = minutes_feature_cols()
     X = train[cols].astype(float).fillna(0.0)
@@ -69,7 +69,7 @@ def train_minutes_model() -> None:
 
     played_mask = train["played"] == 1
     if played_mask.sum() < 200:
-        return
+        raise RuntimeError("Insufficient finalized training data for minutes models")
     Xp = X.loc[played_mask]
     yp = train.loc[played_mask, "mins_target"].astype(float)
     mins_params = dict(objective="reg:logistic", learning_rate=0.05, max_depth=4,

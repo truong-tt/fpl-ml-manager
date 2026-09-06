@@ -20,6 +20,8 @@ import numpy as np
 import pandas as pd
 import requests
 
+from gameweeks import summarize
+
 # https://github.com/olbauday/FPL-Core-Insights. Refresh 2x/day, 05:00 / 17:00 UTC.
 FPL_CI_REF = "main"
 FPL_CI_BASE = f"https://raw.githubusercontent.com/olbauday/FPL-Core-Insights/{FPL_CI_REF}/data"
@@ -151,14 +153,10 @@ def _discover_gw_bounds() -> tuple[int, int, pd.DataFrame]:
 
 
 def finalized_gws(summary: pd.DataFrame) -> list[int]:
-    """Gameweeks whose official post-match review is complete."""
-    if summary.empty or not {"id", "data_checked"}.issubset(summary.columns):
-        return []
-    checked = summary["data_checked"].astype(str).str.lower() == "true"
-    if "finished" in summary.columns:
-        checked &= summary["finished"].astype(str).str.lower() == "true"
-    return sorted(pd.to_numeric(summary.loc[checked, "id"], errors="coerce")
-                  .dropna().astype(int).tolist())
+    """Adapt official Gameweek summaries to the shared finalization rules."""
+    rows = (dict(row, event=row.get("id"), season=SEASON)
+            for row in summary.to_dict("records"))
+    return list(summarize(rows, SEASON).finalized)
 
 
 def _build_teams() -> pd.DataFrame:
@@ -473,12 +471,12 @@ def _build_history_current(
     """Concat current-season per-GW player_gameweek_stats.csv. Tag season."""
     parts: list[pd.DataFrame] = []
     for gw in finalized_gws:
-        df = _fetch_gw_csv(gw, "player_gameweek_stats.csv",
-                           cache_history=True)
-        if df is not None and not df.empty:
-            d = df.copy()
-            d["round"] = gw
-            parts.append(d)
+        df = _fetch_gw_csv(gw, "player_gameweek_stats.csv", cache_history=True)
+        if df is None or df.empty:
+            raise RuntimeError(f"Finalized GW{gw} player history unavailable for {SEASON}")
+        d = df.copy()
+        d["round"] = gw
+        parts.append(d)
     if not parts:
         return pd.DataFrame(columns=HIST_OUTPUT_COLS)
     hist = pd.concat(parts, ignore_index=True)

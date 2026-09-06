@@ -55,14 +55,14 @@ def train_bonus_model() -> None:
     if "season" in train.columns:
         train = train[train["season"] >= SCORING_REGIME_START]
     if train.empty or "bonus" not in hist.columns:
-        return
+        raise RuntimeError("Insufficient finalized training data for bonus models")
     if "bonus" not in train.columns:
         train = train.merge(hist[["player_id", "fixture", "bonus"]],
                             on=["player_id", "fixture"], how="left")
     if "minutes" in train.columns:
         train = train[train["minutes"] > 0]
     if train.empty:
-        return
+        raise RuntimeError("Insufficient finalized training data for bonus models")
 
     cols = points_feature_cols()
     X = train[cols].astype(float).fillna(0.0)

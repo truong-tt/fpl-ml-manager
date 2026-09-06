@@ -116,14 +116,15 @@ class SeasonStateTests(unittest.TestCase):
         self.assertEqual(test["value"].tolist(), ["test"])
 
     def test_model_marker_refreshes_once_per_finalized_gw(self) -> None:
+        import model_preparation
         try:
             import main
         except ModuleNotFoundError as exc:
             self.skipTest(f"optional ML dependency unavailable: {exc.name}")
         current = {"season": main.SEASON, "finalized_through_gw": 4}
-        self.assertFalse(main._models_need_refresh(current, 4))
-        self.assertTrue(main._models_need_refresh(current, 5))
-        self.assertTrue(main._models_need_refresh({"season": "2025-2026"}, 0))
+        self.assertFalse(model_preparation._models_need_refresh(current, 4))
+        self.assertTrue(model_preparation._models_need_refresh(current, 5))
+        self.assertTrue(model_preparation._models_need_refresh({"season": "2025-2026"}, 0))
 
     def test_legacy_snapshot_is_ignored(self) -> None:
         try:
@@ -392,8 +393,7 @@ class FreeTransferCarryTests(unittest.TestCase):
 
     @staticmethod
     def _carry(ft: int, n_in: int, gw: int, used: dict) -> int:
-        import main
-        return main.carry_free_transfers(ft, n_in, gw, used)
+        return chips.carry_free_transfers(ft, n_in, gw, used)
 
     def test_partial_spend_keeps_the_remainder(self) -> None:
         # 3 banked, spend 1 -> 2 left, +1 for the new GW = 3.
