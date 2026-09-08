@@ -3,7 +3,7 @@
 - **Bank:** £0.7m
 - **Hits:** 0
 - **Squad Value:** £99.3m
-- **XI Expected Points (incl. captain):** 61.0
+- **XI Expected Points (incl. captain):** 61.1
 
 ## Starting XI
 
@@ -11,12 +11,12 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Pickford | EVE | GK | 5.5 | 6.17 | 29.84 |  |
 | Lacroix | CHE | DEF | 6.0 | 6.17 | 34.09 |  |
-| Virgil | LIV | DEF | 6.5 | 5.58 | 32.62 |  |
+| Virgil | LIV | DEF | 6.5 | 5.49 | 31.96 |  |
 | Murillo | NFO | DEF | 5.5 | 4.53 | 34.21 |  |
-| Groß | BHA | MID | 5.5 | 4.78 | 31.33 |  |
+| Lewis-Potter | BRE | MID | 5.5 | 4.59 | 34.44 |  |
 | Palmer | CHE | MID | 9.6 | 5.53 | 35.33 | (VC) |
-| Szoboszlai | LIV | MID | 7.0 | 4.58 | 38.72 |  |
-| Lewis-Potter | BRE | MID | 5.5 | 4.67 | 34.88 |  |
+| Szoboszlai | LIV | MID | 7.0 | 4.63 | 39.27 |  |
+| Groß | BHA | MID | 5.5 | 5.02 | 32.02 |  |
 | B.Fernandes | MUN | MID | 12.0 | 4.51 | 35.6 |  |
 | João Pedro | CHE | FWD | 7.7 | 11.07 | 36.43 | (C) |
 | Calvert-Lewin | LEE | FWD | 6.0 | 3.44 | 24.12 |  |
