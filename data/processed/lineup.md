@@ -32,12 +32,10 @@
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Guéhi | Muharemović |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW4 — João Pedro (+6.9 pts)
 - **Bench Boost:** GW5 (+16.8 pts)
-- **Wildcard:** hold (1 suggested transfers, 0 hits)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
