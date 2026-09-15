@@ -1,41 +1,43 @@
 # GW5 Lineup
 
-- **Bank:** £5.4m
+- **Bank:** £7.6m
 - **Hits:** 0
-- **Squad Value:** £94.6m
-- **XI Expected Points (incl. captain):** 62.3
+- **Squad Value:** £92.4m
+- **XI Expected Points (incl. captain):** 63.7
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Lammens | MUN | GK | 4.9 | 6.2 | 35.27 |  |
-| De Cuyper | BHA | DEF | 4.8 | 4.75 | 33.73 |  |
-| Maguire | MUN | DEF | 4.9 | 6.07 | 35.74 |  |
-| Muharemović | LEE | DEF | 5.0 | 5.69 | 33.14 |  |
-| Murillo | NFO | DEF | 5.5 | 6.61 | 32.48 |  |
-| Janelt | BRE | MID | 5.0 | 4.84 | 36.41 | (VC) |
-| Cherki | MCI | MID | 7.8 | 4.43 | 35.38 |  |
-| Gomez | BHA | MID | 5.0 | 4.63 | 37.29 |  |
-| Szoboszlai | LIV | MID | 7.0 | 4.5 | 37.01 |  |
-| B.Fernandes | MUN | MID | 12.0 | 10.2 | 36.1 | (C) |
-| Isak | LIV | FWD | 9.1 | 4.36 | 35.97 |  |
+| Lammens | MUN | GK | 4.9 | 7.48 | 43.05 |  |
+| De Cuyper | BHA | DEF | 4.8 | 5.22 | 34.64 |  |
+| Muharemović | LEE | DEF | 5.0 | 6.09 | 37.05 |  |
+| Maguire | MUN | DEF | 4.9 | 5.91 | 38.68 |  |
+| Murillo | NFO | DEF | 5.5 | 6.66 | 38.03 |  |
+| Groß | BHA | MID | 5.6 | 4.81 | 39.1 | (VC) |
+| Gomez | BHA | MID | 5.0 | 4.45 | 35.25 |  |
+| Janelt | BRE | MID | 5.0 | 10.23 | 37.74 | (C) |
+| B.Fernandes | MUN | MID | 12.0 | 4.54 | 35.28 |  |
+| Szoboszlai | LIV | MID | 7.0 | 4.17 | 35.41 |  |
+| Barry | EVE | FWD | 5.6 | 4.14 | 30.01 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Horníček | NEW | GK | 5.0 | 2.41 | 31.07 |  |
-| Hall | NEW | DEF | 5.2 | 3.17 | 32.75 |  |
-| Barry | EVE | FWD | 5.6 | 4.25 | 31.05 |  |
-| João Pedro | CHE | FWD | 7.8 | 3.76 | 35.14 |  |
+| Horníček | NEW | GK | 5.0 | 2.44 | 35.12 |  |
+| Hall | NEW | DEF | 5.2 | 3.02 | 34.58 |  |
+| Isak | LIV | FWD | 9.1 | 3.57 | 28.83 |  |
+| João Pedro | CHE | FWD | 7.8 | 3.76 | 36.18 |  |
 
 ## Transfers
 
-_Hold — no transfer beats a 4-pt hit._
+| Out | In |
+| --- | --- |
+| Cherki | Groß |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW10 — Szoboszlai (+6.3 pts)
-- **Bench Boost:** GW7 (+20.4 pts)
-- **Wildcard:** hold (0 suggested transfers, 0 hits)
+- **Triple Captain:** GW8 — Groß (+6.9 pts)
+- **Bench Boost:** GW10 (+22.3 pts)
+- **Wildcard:** hold (1 suggested transfers, 0 hits)
