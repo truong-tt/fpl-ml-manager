@@ -1,24 +1,24 @@
 # GW5 Lineup
 
-- **Bank:** £7.6m
+- **Bank:** £7.5m
 - **Hits:** 0
-- **Squad Value:** £92.4m
-- **XI Expected Points (incl. captain):** 63.7
+- **Squad Value:** £92.5m
+- **XI Expected Points (incl. captain):** 63.6
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
 | Lammens | MUN | GK | 4.9 | 7.48 | 43.05 |  |
-| De Cuyper | BHA | DEF | 4.8 | 5.22 | 34.64 |  |
-| Muharemović | LEE | DEF | 5.0 | 6.09 | 37.05 |  |
+| De Cuyper | BHA | DEF | 4.8 | 5.25 | 35.11 |  |
 | Maguire | MUN | DEF | 4.9 | 5.91 | 38.68 |  |
+| Muharemović | LEE | DEF | 5.0 | 6.09 | 37.05 |  |
 | Murillo | NFO | DEF | 5.5 | 6.66 | 38.03 |  |
-| Groß | BHA | MID | 5.6 | 4.81 | 39.1 | (VC) |
-| Gomez | BHA | MID | 5.0 | 4.45 | 35.25 |  |
 | Janelt | BRE | MID | 5.0 | 10.23 | 37.74 | (C) |
+| Groß | BHA | MID | 5.7 | 4.72 | 38.25 | (VC) |
+| Gomez | BHA | MID | 5.0 | 4.45 | 35.25 |  |
 | B.Fernandes | MUN | MID | 12.0 | 4.54 | 35.28 |  |
-| Szoboszlai | LIV | MID | 7.0 | 4.17 | 35.41 |  |
+| Szoboszlai | LIV | MID | 7.0 | 4.11 | 35.91 |  |
 | Barry | EVE | FWD | 5.6 | 4.14 | 30.01 |  |
 
 ## Bench
@@ -27,17 +27,15 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Horníček | NEW | GK | 5.0 | 2.44 | 35.12 |  |
 | Hall | NEW | DEF | 5.2 | 3.02 | 34.58 |  |
-| Isak | LIV | FWD | 9.1 | 3.57 | 28.83 |  |
+| Isak | LIV | FWD | 9.1 | 3.48 | 28.45 |  |
 | João Pedro | CHE | FWD | 7.8 | 3.76 | 36.18 |  |
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Cherki | Groß |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW8 — Groß (+6.9 pts)
-- **Bench Boost:** GW10 (+22.3 pts)
-- **Wildcard:** hold (1 suggested transfers, 0 hits)
+- **Triple Captain:** GW6 — Groß (+6.8 pts)
+- **Bench Boost:** GW10 (+22.5 pts)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
