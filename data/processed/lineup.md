@@ -1,9 +1,9 @@
 # GW5 Lineup
 
-- **Bank:** £8.9m
+- **Bank:** £9.8m
 - **Hits:** 0
-- **Squad Value:** £91.1m
-- **XI Expected Points (incl. captain):** 63.6
+- **Squad Value:** £90.2m
+- **XI Expected Points (incl. captain):** 64.7
 
 ## Starting XI
 
@@ -14,11 +14,11 @@
 | Muharemović | LEE | DEF | 5.0 | 6.09 | 37.05 |  |
 | Maguire | MUN | DEF | 4.9 | 5.91 | 38.68 |  |
 | Murillo | NFO | DEF | 5.5 | 6.66 | 38.03 |  |
+| Schade | BRE | MID | 6.1 | 5.21 | 36.53 | (VC) |
 | Gomez | BHA | MID | 5.0 | 4.45 | 35.25 |  |
-| Groß | BHA | MID | 5.7 | 4.71 | 38.99 | (VC) |
 | Janelt | BRE | MID | 5.0 | 10.26 | 38.13 | (C) |
 | B.Fernandes | MUN | MID | 12.0 | 4.54 | 35.28 |  |
-| Szoboszlai | LIV | MID | 7.0 | 4.07 | 35.64 |  |
+| Groß | BHA | MID | 5.7 | 4.67 | 38.7 |  |
 | Barry | EVE | FWD | 5.6 | 4.14 | 30.01 |  |
 
 ## Bench
@@ -34,10 +34,10 @@
 
 | Out | In |
 | --- | --- |
-| Isak | Havertz |
+| Szoboszlai | Schade |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW6 — Groß (+6.8 pts)
+- **Triple Captain:** GW6 — Groß (+6.7 pts)
 - **Bench Boost:** GW10 (+23.7 pts)
 - **Wildcard:** hold (1 suggested transfers, 0 hits)
