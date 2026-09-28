@@ -3,7 +3,7 @@
 - **Bank:** £3.8m
 - **Hits:** 0
 - **Squad Value:** £96.2m
-- **XI Expected Points (incl. captain):** 69.7
+- **XI Expected Points (incl. captain):** 69.6
 
 ## Starting XI
 
@@ -16,10 +16,10 @@
 | Botman | NEW | DEF | 5.0 | 5.7 | 31.84 |  |
 | Hall | NEW | DEF | 5.3 | 6.55 | 37.89 |  |
 | Groß | BHA | MID | 5.8 | 12.38 | 42.44 | (C) |
-| Gomez | BHA | MID | 5.0 | 5.82 | 38.21 | (VC) |
+| Gomez | BHA | MID | 5.0 | 5.69 | 38.63 | (VC) |
 | Saka | ARS | MID | 9.5 | 5.08 | 36.33 |  |
 | Szoboszlai | LIV | MID | 7.0 | 4.37 | 35.07 |  |
-| Kostoulas | BHA | FWD | 5.6 | 5.65 | 29.78 |  |
+| Kostoulas | BHA | FWD | 5.6 | 5.73 | 29.92 |  |
 
 ## Bench
 
