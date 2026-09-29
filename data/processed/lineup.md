@@ -3,7 +3,7 @@
 - **Bank:** £3.8m
 - **Hits:** 0
 - **Squad Value:** £96.2m
-- **XI Expected Points (incl. captain):** 69.0
+- **XI Expected Points (incl. captain):** 69.3
 
 ## Starting XI
 
@@ -15,11 +15,11 @@
 | O'Shea | IPS | DEF | 4.0 | 5.97 | 40.94 |  |
 | Botman | NEW | DEF | 5.0 | 5.7 | 31.84 |  |
 | Hall | NEW | DEF | 5.3 | 6.55 | 37.89 |  |
-| Groß | BHA | MID | 5.8 | 12.03 | 42.57 | (C) |
-| Gomez | BHA | MID | 5.0 | 5.56 | 38.36 | (VC) |
+| Groß | BHA | MID | 5.8 | 12.4 | 42.96 | (C) |
+| Gomez | BHA | MID | 5.0 | 5.74 | 37.89 | (VC) |
 | Saka | ARS | MID | 9.5 | 5.08 | 36.33 |  |
 | Szoboszlai | LIV | MID | 7.0 | 4.37 | 35.07 |  |
-| Kostoulas | BHA | FWD | 5.6 | 5.57 | 29.84 |  |
+| Kostoulas | BHA | FWD | 5.6 | 5.4 | 29.75 |  |
 
 ## Bench
 
@@ -36,6 +36,6 @@ _Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW6 — Groß (+7.5 pts)
+- **Triple Captain:** GW6 — Groß (+7.7 pts)
 - **Bench Boost:** GW7 (+19.9 pts)
 - **Wildcard:** hold (0 suggested transfers, 0 hits)
