@@ -1,8 +1,8 @@
 # GW6 Lineup
 
-- **Bank:** £3.8m
+- **Bank:** £3.7m
 - **Hits:** 0
-- **Squad Value:** £96.2m
+- **Squad Value:** £96.3m
 - **XI Expected Points (incl. captain):** 69.5
 
 ## Starting XI
@@ -17,7 +17,7 @@
 | Hall | NEW | DEF | 5.3 | 6.41 | 38.18 |  |
 | Groß | BHA | MID | 5.9 | 12.84 | 43.15 | (C) |
 | Gomez | BHA | MID | 5.0 | 5.64 | 38.47 | (VC) |
-| Saka | ARS | MID | 9.5 | 5.08 | 36.33 |  |
+| Saka | ARS | MID | 9.6 | 5.08 | 36.33 |  |
 | Szoboszlai | LIV | MID | 6.9 | 4.37 | 35.07 |  |
 | Kostoulas | BHA | FWD | 5.6 | 5.4 | 29.75 |  |
 
