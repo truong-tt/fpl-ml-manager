@@ -1,8 +1,8 @@
 # GW6 Lineup
 
-- **Bank:** £3.7m
+- **Bank:** £7.1m
 - **Hits:** 0
-- **Squad Value:** £96.3m
+- **Squad Value:** £92.9m
 - **XI Expected Points (incl. captain):** 69.5
 
 ## Starting XI
@@ -27,15 +27,17 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Rushworth | COV | GK | 4.5 | 4.31 | 36.29 |  |
 | Janelt | BRE | MID | 5.0 | 4.32 | 35.43 |  |
-| Isak | LIV | FWD | 9.1 | 3.19 | 31.18 |  |
+| Barry | EVE | FWD | 5.7 | 4.03 | 31.81 |  |
 | Haaland | MCI | FWD | 15.6 | 3.76 | 31.41 |  |
 
 ## Transfers
 
-_Hold — no transfer beats a 4-pt hit._
+| Out | In |
+| --- | --- |
+| Isak | Barry |
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW6 — Groß (+8.0 pts)
-- **Bench Boost:** GW7 (+19.9 pts)
-- **Wildcard:** hold (0 suggested transfers, 0 hits)
+- **Bench Boost:** GW7 (+20.1 pts)
+- **Wildcard:** hold (1 suggested transfers, 0 hits)
