@@ -1,9 +1,9 @@
 # GW7 Lineup
 
-- **Bank:** £5.0m
+- **Bank:** £2.1m
 - **Hits:** 0
-- **Squad Value:** £95.0m
-- **XI Expected Points (incl. captain):** 64.4
+- **Squad Value:** £97.9m
+- **XI Expected Points (incl. captain):** 64.8
 
 ## Starting XI
 
@@ -14,9 +14,9 @@
 | Hill | BOU | DEF | 5.5 | 6.14 | 32.31 |  |
 | Silva | BOU | DEF | 5.0 | 5.87 | 31.85 |  |
 | Hall | NEW | DEF | 5.3 | 4.86 | 32.98 |  |
-| Gomez | BHA | MID | 5.0 | 4.84 | 36.68 |  |
+| Cherki | MCI | MID | 7.9 | 4.79 | 36.29 |  |
 | Saka | ARS | MID | 9.6 | 4.63 | 39.53 |  |
-| Janelt | BRE | MID | 5.0 | 4.36 | 30.72 |  |
+| Gomez | BHA | MID | 5.0 | 4.84 | 36.68 |  |
 | Groß | BHA | MID | 6.0 | 11.81 | 44.51 | (C) |
 | Barry | EVE | FWD | 5.7 | 4.39 | 30.65 |  |
 | Haaland | MCI | FWD | 15.6 | 5.17 | 35.53 | (VC) |
@@ -32,10 +32,12 @@
 
 ## Transfers
 
-_Hold — no transfer beats a 4-pt hit._
+| Out | In |
+| --- | --- |
+| Janelt | Cherki |
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW7 — Groß (+7.4 pts)
 - **Bench Boost:** GW8 (+19.2 pts)
-- **Wildcard:** hold (0 suggested transfers, 0 hits)
+- **Wildcard:** hold (1 suggested transfers, 0 hits)
