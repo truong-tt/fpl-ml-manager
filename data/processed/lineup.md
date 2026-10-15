@@ -1,9 +1,9 @@
 # GW7 Lineup
 
-- **Bank:** £2.4m
+- **Bank:** £3.2m
 - **Hits:** 0
-- **Squad Value:** £97.6m
-- **XI Expected Points (incl. captain):** 65.9
+- **Squad Value:** £96.8m
+- **XI Expected Points (incl. captain):** 66.1
 
 ## Starting XI
 
@@ -13,7 +13,7 @@
 | Hill | BOU | DEF | 5.5 | 6.14 | 32.31 |  |
 | Silva | BOU | DEF | 5.0 | 5.87 | 31.85 |  |
 | Thomas | COV | DEF | 4.0 | 4.92 | 30.41 |  |
-| Hall | NEW | DEF | 5.3 | 4.86 | 32.98 |  |
+| Justin | LEE | DEF | 4.5 | 4.99 | 38.31 |  |
 | Gomez | BHA | MID | 5.0 | 5.01 | 36.48 |  |
 | Groß | BHA | MID | 6.0 | 12.08 | 45.02 | (C) |
 | Saka | ARS | MID | 9.6 | 4.63 | 39.53 |  |
@@ -34,7 +34,7 @@
 
 | Out | In |
 | --- | --- |
-| Szoboszlai | Dewsbury-Hall |
+| Hall | Justin |
 
 ## Chip Recommendations
 
