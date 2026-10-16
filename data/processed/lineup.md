@@ -1,17 +1,17 @@
 # GW7 Lineup
 
-- **Bank:** £2.7m
+- **Bank:** £1.7m
 - **Hits:** 0
-- **Squad Value:** £97.3m
-- **XI Expected Points (incl. captain):** 65.5
+- **Squad Value:** £98.3m
+- **XI Expected Points (incl. captain):** 65.4
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
 | Verbruggen | BHA | GK | 4.6 | 7.42 | 40.0 |  |
-| Thomas | COV | DEF | 4.0 | 4.92 | 30.41 |  |
 | Justin | LEE | DEF | 4.5 | 4.99 | 38.31 |  |
+| Muharemović | LEE | DEF | 5.0 | 4.84 | 36.52 |  |
 | Hill | BOU | DEF | 5.5 | 6.14 | 32.31 |  |
 | Silva | BOU | DEF | 5.0 | 5.87 | 31.85 |  |
 | Dewsbury-Hall | EVE | MID | 6.6 | 4.93 | 36.31 | (VC) |
@@ -34,7 +34,7 @@
 
 | Out | In |
 | --- | --- |
-| Rushworth | Trafford |
+| Thomas | Muharemović |
 
 ## Chip Recommendations
 
