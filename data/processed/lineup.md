@@ -1,43 +1,44 @@
-# GW7 Lineup
+# GW8 Lineup
 
-- **Bank:** £0.0m
+- **Bank:** £0.1m
 - **Hits:** 0
-- **Squad Value:** £100.0m
-- **XI Expected Points (incl. captain):** 66.0
+- **Squad Value:** £99.9m
+- **XI Expected Points (incl. captain):** 68.3
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Verbruggen | BHA | GK | 4.6 | 7.43 | 38.67 |  |
-| Hill | BOU | DEF | 5.5 | 6.14 | 30.86 |  |
-| Silva | BOU | DEF | 5.0 | 5.87 | 30.55 |  |
-| Justin | LEE | DEF | 4.5 | 4.99 | 41.44 |  |
-| Muharemović | LEE | DEF | 5.0 | 4.84 | 39.68 |  |
-| Gomez | BHA | MID | 5.0 | 5.01 | 36.07 |  |
-| Groß | BHA | MID | 6.1 | 12.08 | 44.45 | (C) |
-| Saka | ARS | MID | 9.6 | 4.63 | 39.47 |  |
-| Dewsbury-Hall | EVE | MID | 6.6 | 4.93 | 36.01 | (VC) |
-| Cherki | MCI | MID | 7.9 | 4.89 | 36.52 |  |
-| Haaland | MCI | FWD | 15.7 | 5.17 | 36.01 |  |
+| Trafford | LEE | GK | 5.0 | 6.19 | 37.01 |  |
+| Lacroix | CHE | DEF | 5.9 | 6.09 | 38.27 |  |
+| Justin | LEE | DEF | 4.5 | 6.42 | 39.47 |  |
+| Muharemović | LEE | DEF | 5.0 | 6.28 | 37.66 |  |
+| Maguire | MUN | DEF | 4.8 | 5.73 | 32.8 |  |
+| Gomez | BHA | MID | 5.0 | 4.26 | 35.57 |  |
+| Saka | ARS | MID | 9.6 | 5.85 | 40.7 | (VC) |
+| Cherki | MCI | MID | 8.0 | 5.18 | 38.64 |  |
+| Groß | BHA | MID | 6.1 | 5.36 | 43.71 |  |
+| Haaland | MCI | FWD | 15.7 | 12.43 | 41.19 | (C) |
+| Isak | LIV | FWD | 9.0 | 4.52 | 36.62 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Trafford | LEE | GK | 5.0 | 4.68 | 38.07 |  |
-| Maguire | MUN | DEF | 4.8 | 2.7 | 33.48 |  |
-| Barry | EVE | FWD | 5.7 | 4.39 | 30.61 |  |
-| Isak | LIV | FWD | 9.0 | 3.01 | 34.74 |  |
+| Verbruggen | BHA | GK | 4.6 | 2.5 | 37.08 |  |
+| Robertson | TOT | DEF | 4.4 | 1.87 | 29.37 |  |
+| Dewsbury-Hall | EVE | MID | 6.6 | 3.33 | 34.92 |  |
+| Barry | EVE | FWD | 5.7 | 2.68 | 29.6 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Havertz | Isak |
+| Hill | Lacroix |
+| Silva | Robertson |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW7 — Groß (+7.5 pts)
-- **Bench Boost:** GW10 (+21.9 pts)
-- **Wildcard:** hold (1 suggested transfers, 0 hits)
+- **Triple Captain:** GW10 — Haaland (+7.7 pts)
+- **Bench Boost:** GW12 (+20.4 pts)
+- **Wildcard:** hold (2 suggested transfers, 0 hits)
