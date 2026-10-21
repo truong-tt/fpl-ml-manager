@@ -3,7 +3,7 @@
 - **Bank:** £1.1m
 - **Hits:** 0
 - **Squad Value:** £98.9m
-- **XI Expected Points (incl. captain):** 64.2
+- **XI Expected Points (incl. captain):** 64.3
 
 ## Starting XI
 
@@ -12,14 +12,14 @@
 | Lammens | MUN | GK | 4.9 | 6.36 | 34.2 |  |
 | Lacroix | CHE | DEF | 5.9 | 5.76 | 39.99 |  |
 | Dasilva | COV | DEF | 4.0 | 4.63 | 30.7 |  |
-| Thomas | COV | DEF | 4.0 | 5.39 | 36.54 |  |
 | Muharemović | LEE | DEF | 5.0 | 4.03 | 31.17 |  |
 | Maguire | MUN | DEF | 4.8 | 6.33 | 39.27 |  |
-| Cherki | MCI | MID | 8.0 | 4.65 | 36.99 |  |
-| Gomez | BHA | MID | 5.0 | 4.37 | 35.88 |  |
-| Groß | BHA | MID | 6.2 | 5.07 | 42.23 |  |
+| Thomas | COV | DEF | 4.0 | 5.39 | 36.54 |  |
+| Groß | BHA | MID | 6.2 | 5.17 | 42.86 | (VC) |
 | Saka | ARS | MID | 9.6 | 12.22 | 37.97 | (C) |
-| Haaland | MCI | FWD | 15.7 | 5.38 | 36.6 | (VC) |
+| Cherki | MCI | MID | 8.0 | 4.83 | 37.82 |  |
+| Gomez | BHA | MID | 5.0 | 4.28 | 36.17 |  |
+| Haaland | MCI | FWD | 15.7 | 5.27 | 36.35 |  |
 
 ## Bench
 
@@ -32,14 +32,10 @@
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Trafford | Dasilva |
-| Justin | Lammens |
-| Robertson | Thomas |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW10 — Groß (+7.4 pts)
+- **Triple Captain:** GW10 — Groß (+7.7 pts)
 - **Bench Boost:** GW9 (+16.8 pts)
-- **Wildcard:** hold (3 suggested transfers, 0 hits)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
