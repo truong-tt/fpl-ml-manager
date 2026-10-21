@@ -3,7 +3,7 @@
 - **Bank:** £1.1m
 - **Hits:** 0
 - **Squad Value:** £98.9m
-- **XI Expected Points (incl. captain):** 64.3
+- **XI Expected Points (incl. captain):** 62.2
 
 ## Starting XI
 
@@ -16,7 +16,7 @@
 | Maguire | MUN | DEF | 4.8 | 6.33 | 39.27 |  |
 | Thomas | COV | DEF | 4.0 | 5.39 | 36.54 |  |
 | Groß | BHA | MID | 6.2 | 5.17 | 42.86 | (VC) |
-| Saka | ARS | MID | 9.6 | 12.22 | 37.97 | (C) |
+| Saka | ARS | MID | 9.6 | 10.13 | 36.92 | (C) |
 | Cherki | MCI | MID | 8.0 | 4.83 | 37.82 |  |
 | Gomez | BHA | MID | 5.0 | 4.28 | 36.17 |  |
 | Haaland | MCI | FWD | 15.7 | 5.27 | 36.35 |  |
