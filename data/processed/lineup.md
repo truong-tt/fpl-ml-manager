@@ -32,13 +32,10 @@
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Isak | Mbeumo |
-| Dewsbury-Hall | Evanilson |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW10 — Groß (+7.4 pts)
 - **Bench Boost:** GW11 (+18.8 pts)
-- **Wildcard:** hold (2 suggested transfers, 0 hits)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
