@@ -1,9 +1,9 @@
 # GW8 Lineup
 
-- **Bank:** £1.1m
+- **Bank:** £2.8m
 - **Hits:** 0
-- **Squad Value:** £98.9m
-- **XI Expected Points (incl. captain):** 62.2
+- **Squad Value:** £97.2m
+- **XI Expected Points (incl. captain):** 62.0
 
 ## Starting XI
 
@@ -12,30 +12,33 @@
 | Lammens | MUN | GK | 4.9 | 6.36 | 34.2 |  |
 | Lacroix | CHE | DEF | 5.9 | 5.76 | 39.99 |  |
 | Dasilva | COV | DEF | 4.0 | 4.63 | 30.7 |  |
+| Thomas | COV | DEF | 4.0 | 5.39 | 36.54 |  |
 | Muharemović | LEE | DEF | 5.0 | 4.03 | 31.17 |  |
 | Maguire | MUN | DEF | 4.8 | 6.33 | 39.27 |  |
-| Thomas | COV | DEF | 4.0 | 5.39 | 36.54 |  |
-| Groß | BHA | MID | 6.2 | 5.17 | 42.86 | (VC) |
-| Saka | ARS | MID | 9.6 | 10.13 | 36.92 | (C) |
-| Cherki | MCI | MID | 8.0 | 4.83 | 37.82 |  |
-| Gomez | BHA | MID | 5.0 | 4.28 | 36.17 |  |
-| Haaland | MCI | FWD | 15.7 | 5.27 | 36.35 |  |
+| Cherki | MCI | MID | 8.0 | 4.65 | 36.99 |  |
+| Gomez | BHA | MID | 5.0 | 4.37 | 35.88 |  |
+| Mbeumo | MUN | MID | 7.8 | 4.64 | 35.59 |  |
+| Groß | BHA | MID | 6.2 | 5.07 | 42.23 | (VC) |
+| Haaland | MCI | FWD | 15.7 | 10.77 | 36.6 | (C) |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
 | Kinsky | TOT | GK | 4.5 | 2.18 | 31.14 |  |
-| Dewsbury-Hall | EVE | MID | 6.6 | 3.22 | 31.21 |  |
+| Saka | ARS | MID | 9.6 | 3.37 | 35.22 |  |
+| Evanilson | BOU | FWD | 6.1 | 3.21 | 29.6 |  |
 | Barry | EVE | FWD | 5.7 | 3.29 | 33.23 |  |
-| Isak | LIV | FWD | 9.0 | 2.09 | 19.08 |  |
 
 ## Transfers
 
-_Hold — no transfer beats a 4-pt hit._
+| Out | In |
+| --- | --- |
+| Isak | Mbeumo |
+| Dewsbury-Hall | Evanilson |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW10 — Groß (+7.7 pts)
-- **Bench Boost:** GW9 (+16.8 pts)
-- **Wildcard:** hold (0 suggested transfers, 0 hits)
+- **Triple Captain:** GW10 — Groß (+7.4 pts)
+- **Bench Boost:** GW11 (+18.8 pts)
+- **Wildcard:** hold (2 suggested transfers, 0 hits)
