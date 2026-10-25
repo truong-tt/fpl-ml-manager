@@ -1,43 +1,43 @@
-# GW8 Lineup
+# GW9 Lineup
 
-- **Bank:** £3.8m
+- **Bank:** £2.9m
 - **Hits:** 0
-- **Squad Value:** £96.2m
-- **XI Expected Points (incl. captain):** 62.3
+- **Squad Value:** £97.1m
+- **XI Expected Points (incl. captain):** 62.9
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Lammens | MUN | GK | 4.9 | 6.36 | 34.1 |  |
-| Lacroix | CHE | DEF | 5.9 | 5.76 | 39.4 |  |
-| Dasilva | COV | DEF | 4.0 | 4.63 | 29.95 |  |
-| Thomas | COV | DEF | 4.0 | 4.39 | 32.15 |  |
-| O'Shea | IPS | DEF | 4.0 | 5.29 | 30.83 |  |
-| Maguire | MUN | DEF | 4.7 | 6.33 | 38.87 |  |
-| Cherki | MCI | MID | 8.0 | 4.65 | 36.76 |  |
-| Gomez | BHA | MID | 5.0 | 4.37 | 36.14 |  |
-| Mbeumo | MUN | MID | 7.9 | 4.64 | 35.27 |  |
-| Groß | BHA | MID | 6.2 | 5.07 | 42.53 | (VC) |
-| Haaland | MCI | FWD | 15.7 | 10.77 | 36.5 | (C) |
+| Rushworth | COV | GK | 4.5 | 6.52 | 33.67 |  |
+| Lacroix | CHE | DEF | 5.9 | 6.07 | 40.06 |  |
+| Thomas | COV | DEF | 4.0 | 4.92 | 29.12 |  |
+| Dasilva | COV | DEF | 4.0 | 5.1 | 27.29 |  |
+| Van Hecke | TOT | DEF | 4.9 | 6.41 | 33.8 |  |
+| Gomez | BHA | MID | 5.0 | 4.32 | 37.28 |  |
+| Cherki | MCI | MID | 8.0 | 5.1 | 37.85 | (VC) |
+| Groß | BHA | MID | 6.2 | 4.93 | 43.77 |  |
+| Barry | EVE | FWD | 5.7 | 4.3 | 31.47 |  |
+| Evanilson | BOU | FWD | 6.2 | 4.05 | 31.12 |  |
+| Haaland | MCI | FWD | 15.7 | 11.16 | 36.83 | (C) |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Rushworth | COV | GK | 4.5 | 4.71 | 34.67 |  |
-| Saka | ARS | MID | 9.5 | 0.0 | 32.93 |  |
-| Barry | EVE | FWD | 5.7 | 3.29 | 32.59 |  |
-| Evanilson | BOU | FWD | 6.2 | 3.21 | 29.58 |  |
+| Lammens | MUN | GK | 4.9 | 2.84 | 29.16 |  |
+| Maguire | MUN | DEF | 4.7 | 3.55 | 34.07 |  |
+| Saka | ARS | MID | 9.5 | 0.0 | 34.61 |  |
+| Mbeumo | MUN | MID | 7.9 | 3.38 | 34.13 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Kinsky | Rushworth |
+| O'Shea | Van Hecke |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW10 — Groß (+7.1 pts)
-- **Bench Boost:** GW11 (+19.4 pts)
+- **Triple Captain:** GW16 — Groß (+7.3 pts)
+- **Bench Boost:** GW10 (+22.1 pts)
 - **Wildcard:** hold (1 suggested transfers, 0 hits)
