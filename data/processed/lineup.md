@@ -1,9 +1,9 @@
 # GW9 Lineup
 
-- **Bank:** £3.1m
+- **Bank:** £2.7m
 - **Hits:** 0
-- **Squad Value:** £96.9m
-- **XI Expected Points (incl. captain):** 59.3
+- **Squad Value:** £97.3m
+- **XI Expected Points (incl. captain):** 58.9
 
 ## Starting XI
 
@@ -12,14 +12,14 @@
 | Kinsky | TOT | GK | 4.4 | 6.42 | 35.47 |  |
 | Lacroix | CHE | DEF | 5.9 | 5.51 | 38.49 |  |
 | Maguire | MUN | DEF | 4.7 | 4.99 | 38.21 |  |
-| Ajer | BRE | DEF | 4.5 | 5.0 | 33.6 |  |
+| Richards | CRY | DEF | 4.9 | 4.64 | 41.45 |  |
 | Van Hecke | TOT | DEF | 4.9 | 5.98 | 37.32 |  |
 | Mukiele | SUN | DEF | 5.4 | 4.69 | 41.65 |  |
 | Ndiaye | MCI | MID | 5.8 | 4.63 | 34.82 |  |
 | Groß | BHA | MID | 6.2 | 3.62 | 34.46 |  |
+| Haaland | MCI | FWD | 15.8 | 10.23 | 37.47 | (C) |
 | Barry | EVE | FWD | 5.6 | 3.64 | 29.91 |  |
 | N.Jackson | AVL | FWD | 6.8 | 4.57 | 33.68 | (VC) |
-| Haaland | MCI | FWD | 15.8 | 10.23 | 37.47 | (C) |
 
 ## Bench
 
@@ -34,7 +34,7 @@
 
 | Out | In |
 | --- | --- |
-| Lammens | Kinsky |
+| Ajer | Richards |
 
 ## Chip Recommendations
 
