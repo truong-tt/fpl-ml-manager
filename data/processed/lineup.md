@@ -1,9 +1,9 @@
 # GW9 Lineup
 
-- **Bank:** £5.0m
+- **Bank:** £6.7m
 - **Hits:** 0
-- **Squad Value:** £95.0m
-- **XI Expected Points (incl. captain):** 58.0
+- **Squad Value:** £93.3m
+- **XI Expected Points (incl. captain):** 58.3
 
 ## Starting XI
 
@@ -11,10 +11,10 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Kinsky | TOT | GK | 4.4 | 6.44 | 35.56 |  |
 | Richards | CRY | DEF | 4.9 | 4.64 | 41.45 |  |
-| Lacroix | CHE | DEF | 5.9 | 4.37 | 37.35 |  |
+| Ajayi | HUL | DEF | 4.2 | 5.44 | 27.79 |  |
 | Maguire | MUN | DEF | 4.7 | 4.99 | 38.21 |  |
 | Van Hecke | TOT | DEF | 4.9 | 6.09 | 37.39 |  |
-| Mukiele | SUN | DEF | 5.4 | 4.82 | 40.61 |  |
+| Mukiele | SUN | DEF | 5.4 | 4.09 | 39.88 |  |
 | Ndiaye | MCI | MID | 5.8 | 4.7 | 34.79 |  |
 | Groß | BHA | MID | 6.2 | 3.65 | 34.59 |  |
 | Haaland | MCI | FWD | 15.8 | 10.08 | 37.58 | (C) |
@@ -34,7 +34,7 @@
 
 | Out | In |
 | --- | --- |
-| Mbeumo | King |
+| Lacroix | Ajayi |
 
 ## Chip Recommendations
 
