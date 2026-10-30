@@ -1,8 +1,8 @@
 # GW9 Lineup
 
-- **Bank:** £6.2m
+- **Bank:** £4.5m
 - **Hits:** 0
-- **Squad Value:** £93.8m
+- **Squad Value:** £95.5m
 - **XI Expected Points (incl. captain):** 57.0
 
 ## Starting XI
@@ -27,17 +27,17 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Roefs | SUN | GK | 4.9 | 4.28 | 44.63 |  |
 | King | FUL | MID | 5.6 | 3.19 | 28.4 |  |
-| Gomez | BHA | MID | 5.0 | 3.27 | 30.75 |  |
 | Saka | ARS | MID | 9.5 | 0.0 | 31.13 |  |
+| Ødegaard | ARS | MID | 6.7 | 2.83 | 30.65 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Kinsky | Roefs |
+| Gomez | Ødegaard |
 
 ## Chip Recommendations
 
 - **Triple Captain:** GW10 — Saka (+7.0 pts)
-- **Bench Boost:** GW10 (+21.9 pts)
+- **Bench Boost:** GW10 (+22.5 pts)
 - **Wildcard:** hold (1 suggested transfers, 0 hits)
