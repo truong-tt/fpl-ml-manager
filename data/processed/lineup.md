@@ -1,43 +1,44 @@
-# GW9 Lineup
+# GW10 Lineup
 
-- **Bank:** £4.5m
+- **Bank:** £-0.0m
 - **Hits:** 0
-- **Squad Value:** £95.5m
-- **XI Expected Points (incl. captain):** 57.0
+- **Squad Value:** £100.0m
+- **XI Expected Points (incl. captain):** 63.8
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Rushworth | COV | GK | 4.5 | 5.28 | 43.05 |  |
-| Richards | CRY | DEF | 4.9 | 4.64 | 41.45 |  |
-| Ajayi | HUL | DEF | 4.2 | 5.44 | 27.79 |  |
-| Maguire | MUN | DEF | 4.7 | 4.99 | 38.21 |  |
-| Van Hecke | TOT | DEF | 4.9 | 5.98 | 37.32 |  |
-| Mukiele | SUN | DEF | 5.4 | 3.95 | 40.9 |  |
-| Ndiaye | MCI | MID | 5.8 | 4.63 | 34.82 |  |
-| Groß | BHA | MID | 6.2 | 3.62 | 34.46 |  |
-| Haaland | MCI | FWD | 15.8 | 10.23 | 37.47 | (C) |
-| Barry | EVE | FWD | 5.6 | 3.64 | 29.91 |  |
-| N.Jackson | AVL | FWD | 6.8 | 4.57 | 33.68 | (VC) |
+| Roefs | SUN | GK | 4.9 | 7.15 | 43.42 |  |
+| Richards | CRY | DEF | 4.9 | 5.83 | 42.62 |  |
+| Maguire | MUN | DEF | 4.7 | 4.56 | 35.28 |  |
+| Gabriel | ARS | DEF | 8.0 | 6.43 | 41.77 |  |
+| Murillo | NFO | DEF | 5.5 | 6.5 | 41.91 |  |
+| Mukiele | SUN | DEF | 5.4 | 4.56 | 39.46 |  |
+| Ødegaard | ARS | MID | 6.7 | 4.68 | 31.73 |  |
+| King | FUL | MID | 5.5 | 10.61 | 29.43 | (C) |
+| Groß | BHA | MID | 6.2 | 5.11 | 35.43 | (VC) |
+| Barry | EVE | FWD | 5.6 | 4.12 | 29.11 |  |
+| N.Jackson | AVL | FWD | 7.0 | 4.23 | 35.84 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Roefs | SUN | GK | 4.9 | 4.28 | 44.63 |  |
-| King | FUL | MID | 5.6 | 3.19 | 28.4 |  |
-| Saka | ARS | MID | 9.5 | 0.0 | 31.13 |  |
-| Ødegaard | ARS | MID | 6.7 | 2.83 | 30.65 |  |
+| Rushworth | COV | GK | 4.5 | 3.88 | 39.27 |  |
+| Saka | ARS | MID | 9.5 | 0.0 | 29.42 |  |
+| Ndiaye | MCI | MID | 5.8 | 2.92 | 30.98 |  |
+| Haaland | MCI | FWD | 15.8 | 3.06 | 34.09 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Gomez | Ødegaard |
+| Van Hecke | Murillo |
+| Ajayi | Gabriel |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW10 — Saka (+7.0 pts)
-- **Bench Boost:** GW10 (+22.5 pts)
-- **Wildcard:** hold (1 suggested transfers, 0 hits)
+- **Triple Captain:** GW13 — N.Jackson (+6.9 pts)
+- **Bench Boost:** GW15 (+20.7 pts)
+- **Wildcard:** hold (2 suggested transfers, 0 hits)
