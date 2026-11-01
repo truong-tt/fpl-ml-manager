@@ -3,42 +3,39 @@
 - **Bank:** £-0.0m
 - **Hits:** 0
 - **Squad Value:** £100.0m
-- **XI Expected Points (incl. captain):** 63.8
+- **XI Expected Points (incl. captain):** 64.4
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Roefs | SUN | GK | 4.9 | 7.15 | 43.42 |  |
-| Richards | CRY | DEF | 4.9 | 5.83 | 42.62 |  |
-| Maguire | MUN | DEF | 4.7 | 4.56 | 35.28 |  |
-| Gabriel | ARS | DEF | 8.0 | 6.43 | 41.77 |  |
-| Murillo | NFO | DEF | 5.5 | 6.5 | 41.91 |  |
-| Mukiele | SUN | DEF | 5.4 | 4.56 | 39.46 |  |
-| Ødegaard | ARS | MID | 6.7 | 4.68 | 31.73 |  |
-| King | FUL | MID | 5.5 | 10.61 | 29.43 | (C) |
-| Groß | BHA | MID | 6.2 | 5.11 | 35.43 | (VC) |
-| Barry | EVE | FWD | 5.6 | 4.12 | 29.11 |  |
-| N.Jackson | AVL | FWD | 7.0 | 4.23 | 35.84 |  |
+| Roefs | SUN | GK | 4.9 | 7.15 | 43.56 |  |
+| Richards | CRY | DEF | 4.9 | 5.83 | 40.53 |  |
+| Maguire | MUN | DEF | 4.7 | 4.88 | 35.5 |  |
+| Gabriel | ARS | DEF | 8.0 | 6.59 | 42.34 |  |
+| Murillo | NFO | DEF | 5.5 | 6.5 | 41.92 |  |
+| Mukiele | SUN | DEF | 5.4 | 4.56 | 39.93 |  |
+| Ødegaard | ARS | MID | 6.7 | 4.93 | 31.99 |  |
+| King | FUL | MID | 5.5 | 10.68 | 29.73 | (C) |
+| Groß | BHA | MID | 6.2 | 5.09 | 34.32 | (VC) |
+| Barry | EVE | FWD | 5.6 | 4.12 | 29.52 |  |
+| N.Jackson | AVL | FWD | 7.0 | 4.11 | 35.55 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Rushworth | COV | GK | 4.5 | 3.88 | 39.27 |  |
-| Saka | ARS | MID | 9.5 | 0.0 | 29.42 |  |
-| Ndiaye | MCI | MID | 5.8 | 2.92 | 30.98 |  |
-| Haaland | MCI | FWD | 15.8 | 3.06 | 34.09 |  |
+| Rushworth | COV | GK | 4.5 | 3.88 | 39.62 |  |
+| Saka | ARS | MID | 9.5 | 0.0 | 29.46 |  |
+| Ndiaye | MCI | MID | 5.8 | 2.92 | 30.62 |  |
+| Haaland | MCI | FWD | 15.8 | 3.06 | 33.69 |  |
 
 ## Transfers
 
-| Out | In |
-| --- | --- |
-| Van Hecke | Murillo |
-| Ajayi | Gabriel |
+_Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW13 — N.Jackson (+6.9 pts)
-- **Bench Boost:** GW15 (+20.7 pts)
-- **Wildcard:** hold (2 suggested transfers, 0 hits)
+- **Triple Captain:** GW13 — N.Jackson (+6.8 pts)
+- **Bench Boost:** GW15 (+20.9 pts)
+- **Wildcard:** hold (0 suggested transfers, 0 hits)
