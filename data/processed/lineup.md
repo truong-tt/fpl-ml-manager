@@ -1,43 +1,44 @@
 # GW10 Lineup
 
-- **Bank:** £0.4m
+- **Bank:** £3.6m
 - **Hits:** 0
-- **Squad Value:** £99.6m
-- **XI Expected Points (incl. captain):** 65.8
+- **Squad Value:** £96.4m
+- **XI Expected Points (incl. captain):** 59.7
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Roefs | SUN | GK | 4.9 | 7.15 | 43.56 |  |
-| Gabriel | ARS | DEF | 8.0 | 6.42 | 41.98 |  |
-| Maguire | MUN | DEF | 4.7 | 4.88 | 35.29 |  |
-| Richards | CRY | DEF | 4.9 | 5.92 | 40.58 |  |
-| Murillo | NFO | DEF | 5.5 | 6.5 | 41.92 |  |
-| Mukiele | SUN | DEF | 5.4 | 4.56 | 39.93 |  |
-| Groß | BHA | MID | 6.2 | 5.01 | 34.42 |  |
-| Ødegaard | ARS | MID | 6.7 | 4.87 | 32.32 |  |
-| Iwobi | FUL | MID | 5.4 | 11.03 | 31.08 | (C) |
-| King | FUL | MID | 5.5 | 5.34 | 29.73 | (VC) |
-| Barry | EVE | FWD | 5.6 | 4.12 | 29.52 |  |
+| Roefs | SUN | GK | 4.9 | 4.46 | 37.19 |  |
+| Richards | CRY | DEF | 4.9 | 4.75 | 29.23 |  |
+| Jacquet | LIV | DEF | 5.1 | 4.59 | 37.55 |  |
+| Gabriel | ARS | DEF | 8.0 | 6.24 | 41.22 |  |
+| Maguire | MUN | DEF | 4.7 | 5.17 | 35.44 |  |
+| Murillo | NFO | DEF | 5.5 | 4.87 | 35.44 |  |
+| Ødegaard | ARS | MID | 6.7 | 4.93 | 35.87 |  |
+| Iwobi | FUL | MID | 5.4 | 4.69 | 26.08 |  |
+| King | FUL | MID | 5.5 | 4.64 | 27.57 |  |
+| Groß | BHA | MID | 6.2 | 10.36 | 38.16 | (C) |
+| Barry | EVE | FWD | 5.6 | 5.01 | 34.53 | (VC) |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Rushworth | COV | GK | 4.5 | 3.88 | 39.62 |  |
-| Saka | ARS | MID | 9.5 | 0.0 | 29.87 |  |
-| N.Jackson | AVL | FWD | 7.0 | 4.11 | 35.55 |  |
-| Haaland | MCI | FWD | 15.8 | 2.99 | 34.01 |  |
+| Rushworth | COV | GK | 4.5 | 1.94 | 35.73 |  |
+| Tavernier | BOU | MID | 6.6 | 4.24 | 32.79 |  |
+| N.Jackson | AVL | FWD | 7.0 | 3.47 | 30.77 |  |
+| Haaland | MCI | FWD | 15.8 | 3.95 | 38.67 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Ndiaye | Iwobi |
+| Saka | Jacquet |
+| Mukiele | Tavernier |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW13 — N.Jackson (+6.8 pts)
-- **Bench Boost:** GW11 (+20.6 pts)
-- **Wildcard:** hold (1 suggested transfers, 0 hits)
+- **Triple Captain:** GW17 — Haaland (+6.7 pts)
+- **Bench Boost:** GW11 (+21.2 pts)
+- **Wildcard:** hold (2 suggested transfers, 0 hits)
