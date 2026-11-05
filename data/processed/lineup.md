@@ -1,9 +1,9 @@
 # GW10 Lineup
 
-- **Bank:** £1.6m
+- **Bank:** £0.0m
 - **Hits:** 0
-- **Squad Value:** £98.4m
-- **XI Expected Points (incl. captain):** 60.8
+- **Squad Value:** £100.0m
+- **XI Expected Points (incl. captain):** 59.3
 
 ## Starting XI
 
@@ -11,14 +11,14 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Roefs | SUN | GK | 4.9 | 4.46 | 37.19 |  |
 | Gabriel | ARS | DEF | 8.0 | 6.24 | 41.22 |  |
+| Virgil | LIV | DEF | 6.4 | 4.38 | 36.7 |  |
 | Jacquet | LIV | DEF | 5.1 | 4.59 | 37.63 |  |
-| Konsa | ARS | DEF | 4.8 | 5.85 | 36.47 |  |
 | Maguire | MUN | DEF | 4.6 | 5.17 | 35.44 |  |
 | Murillo | NFO | DEF | 5.5 | 4.87 | 35.62 |  |
-| Ødegaard | ARS | MID | 6.7 | 4.93 | 35.87 |  |
+| Groß | BHA | MID | 6.2 | 10.36 | 38.33 | (C) |
 | Iwobi | FUL | MID | 5.4 | 4.69 | 26.08 |  |
 | King | FUL | MID | 5.5 | 4.64 | 27.57 |  |
-| Groß | BHA | MID | 6.2 | 10.36 | 38.33 | (C) |
+| Ødegaard | ARS | MID | 6.7 | 4.93 | 35.87 |  |
 | Barry | EVE | FWD | 5.6 | 5.01 | 34.56 | (VC) |
 
 ## Bench
@@ -34,7 +34,7 @@
 
 | Out | In |
 | --- | --- |
-| Richards | Konsa |
+| Konsa | Virgil |
 
 ## Chip Recommendations
 
