@@ -1,9 +1,9 @@
 # GW11 Lineup
 
-- **Bank:** £1.7m
+- **Bank:** £10.1m
 - **Hits:** 0
-- **Squad Value:** £98.3m
-- **XI Expected Points (incl. captain):** 62.7
+- **Squad Value:** £89.9m
+- **XI Expected Points (incl. captain):** 62.5
 
 ## Starting XI
 
@@ -13,13 +13,13 @@
 | Silva | BOU | DEF | 5.1 | 5.71 | 33.02 |  |
 | Pinnock | COV | DEF | 4.5 | 5.62 | 31.15 |  |
 | Vuskovic | BHA | DEF | 5.3 | 4.42 | 37.66 |  |
-| Jacquet | LIV | DEF | 5.1 | 5.69 | 31.09 |  |
 | Van Hecke | TOT | DEF | 5.1 | 6.31 | 33.64 |  |
-| E.Le Fée | SUN | MID | 5.7 | 4.42 | 34.03 |  |
+| Jacquet | LIV | DEF | 5.1 | 5.69 | 31.09 |  |
 | Rudoni | COV | MID | 4.9 | 9.99 | 31.39 | (C) |
+| E.Le Fée | SUN | MID | 5.7 | 4.42 | 34.03 |  |
 | Barry | EVE | FWD | 5.7 | 4.6 | 40.3 |  |
+| Havertz | ARS | FWD | 7.4 | 4.1 | 32.65 |  |
 | N.Jackson | AVL | FWD | 7.1 | 4.73 | 33.32 | (VC) |
-| Haaland | MCI | FWD | 15.8 | 4.29 | 32.84 |  |
 
 ## Bench
 
@@ -34,7 +34,7 @@
 
 | Out | In |
 | --- | --- |
-| Groß | Dewsbury-Hall |
+| Haaland | Havertz |
 
 ## Chip Recommendations
 
