@@ -1,41 +1,44 @@
-# GW11 Lineup
+# GW12 Lineup
 
-- **Bank:** £10.0m
+- **Bank:** £7.2m
 - **Hits:** 0
-- **Squad Value:** £90.0m
-- **XI Expected Points (incl. captain):** 62.5
+- **Squad Value:** £92.8m
+- **XI Expected Points (incl. captain):** 56.5
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Rushworth | COV | GK | 4.5 | 6.93 | 35.14 |  |
-| Silva | BOU | DEF | 5.1 | 5.71 | 33.02 |  |
-| Pinnock | COV | DEF | 4.5 | 5.62 | 31.15 |  |
-| Vuskovic | BHA | DEF | 5.3 | 4.42 | 37.66 |  |
-| Van Hecke | TOT | DEF | 5.1 | 6.31 | 33.64 |  |
-| Jacquet | LIV | DEF | 5.1 | 5.69 | 31.09 |  |
-| Rudoni | COV | MID | 4.9 | 9.99 | 31.39 | (C) |
-| E.Le Fée | SUN | MID | 5.7 | 4.42 | 34.03 |  |
-| Barry | EVE | FWD | 5.7 | 4.6 | 40.3 |  |
-| Havertz | ARS | FWD | 7.4 | 4.1 | 32.65 |  |
-| N.Jackson | AVL | FWD | 7.2 | 4.73 | 33.32 | (VC) |
+| Roefs | SUN | GK | 4.8 | 4.47 | 37.16 |  |
+| Vuskovic | BHA | DEF | 5.3 | 5.36 | 37.7 |  |
+| Gabriel | ARS | DEF | 8.1 | 5.94 | 38.87 |  |
+| Richards | CRY | DEF | 4.9 | 5.87 | 28.94 |  |
+| Dewsbury-Hall | EVE | MID | 6.7 | 4.57 | 31.58 | (VC) |
+| Palmer | CHE | MID | 9.8 | 3.9 | 36.34 |  |
+| E.Le Fée | SUN | MID | 5.7 | 4.01 | 33.73 |  |
+| Rogers | CHE | MID | 8.2 | 3.98 | 35.73 |  |
+| Barry | EVE | FWD | 5.7 | 10.56 | 40.14 | (C) |
+| N.Jackson | AVL | FWD | 7.2 | 3.79 | 31.83 |  |
+| Havertz | ARS | FWD | 7.4 | 4.06 | 32.46 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Roefs | SUN | GK | 4.8 | 3.23 | 36.88 |  |
-| Rogers | CHE | MID | 8.2 | 3.93 | 35.25 |  |
-| Palmer | CHE | MID | 9.8 | 3.96 | 35.9 |  |
-| Dewsbury-Hall | EVE | MID | 6.7 | 3.65 | 32.08 |  |
+| Rushworth | COV | GK | 4.5 | 2.42 | 29.64 |  |
+| Pinnock | COV | DEF | 4.5 | 2.16 | 27.29 |  |
+| Silva | BOU | DEF | 5.1 | 3.45 | 33.07 |  |
+| Rudoni | COV | MID | 4.9 | 2.95 | 29.83 |  |
 
 ## Transfers
 
-_Hold — no transfer beats a 4-pt hit._
+| Out | In |
+| --- | --- |
+| Van Hecke | Richards |
+| Jacquet | Gabriel |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW13 — Barry (+8.5 pts)
-- **Bench Boost:** GW16 (+20.5 pts)
-- **Wildcard:** hold (0 suggested transfers, 0 hits)
+- **Triple Captain:** GW13 — Barry (+8.2 pts)
+- **Bench Boost:** GW13 (+20.1 pts)
+- **Wildcard:** hold (2 suggested transfers, 0 hits)
