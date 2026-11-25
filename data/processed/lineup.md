@@ -1,43 +1,44 @@
 # GW12 Lineup
 
-- **Bank:** £8.0m
+- **Bank:** £7.3m
 - **Hits:** 0
-- **Squad Value:** £92.0m
-- **XI Expected Points (incl. captain):** 56.8
+- **Squad Value:** £92.7m
+- **XI Expected Points (incl. captain):** 59.8
 
 ## Starting XI
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Roefs | SUN | GK | 4.8 | 4.81 | 35.02 |  |
-| Vuskovic | BHA | DEF | 5.3 | 5.08 | 36.93 |  |
-| Mitchell | CRY | DEF | 4.4 | 5.66 | 20.98 |  |
-| Richards | CRY | DEF | 4.9 | 5.86 | 25.47 |  |
-| Gabriel | ARS | DEF | 8.1 | 4.47 | 34.32 |  |
-| Dewsbury-Hall | EVE | MID | 6.7 | 3.67 | 30.44 |  |
-| Wirtz | LIV | MID | 7.4 | 9.67 | 37.1 | (C) |
-| E.Le Fée | SUN | MID | 5.7 | 4.11 | 34.08 |  |
-| Havertz | ARS | FWD | 7.4 | 4.0 | 32.39 |  |
-| Barry | EVE | FWD | 5.7 | 4.6 | 38.23 |  |
-| N.Jackson | AVL | FWD | 7.3 | 4.83 | 32.96 | (VC) |
+| Roefs | SUN | GK | 4.8 | 5.12 | 38.69 |  |
+| Gabriel | ARS | DEF | 8.1 | 5.38 | 37.02 |  |
+| Richards | CRY | DEF | 4.9 | 5.63 | 25.76 |  |
+| Mitchell | CRY | DEF | 4.4 | 5.22 | 21.22 |  |
+| Vuskovic | BHA | DEF | 5.3 | 4.91 | 34.39 |  |
+| Ødegaard | ARS | MID | 6.7 | 5.04 | 35.69 | (VC) |
+| Wirtz | LIV | MID | 7.4 | 4.37 | 36.0 |  |
+| Groß | BHA | MID | 6.3 | 10.93 | 39.22 | (C) |
+| N.Jackson | AVL | FWD | 7.3 | 4.07 | 29.83 |  |
+| Havertz | ARS | FWD | 7.4 | 4.45 | 29.01 |  |
+| Barry | EVE | FWD | 5.7 | 4.68 | 32.07 |  |
 
 ## Bench
 
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
-| Rushworth | COV | GK | 4.5 | 2.67 | 27.92 |  |
-| Silva | BOU | DEF | 5.1 | 3.41 | 31.82 |  |
-| Palmer | CHE | MID | 9.8 | 3.26 | 31.49 |  |
-| Rudoni | COV | MID | 4.9 | 3.03 | 29.98 |  |
+| Rushworth | COV | GK | 4.5 | 1.81 | 25.66 |  |
+| Silva | BOU | DEF | 5.1 | 2.57 | 31.46 |  |
+| Palmer | CHE | MID | 9.8 | 2.8 | 28.43 |  |
+| Rudoni | COV | MID | 5.0 | 2.84 | 29.49 |  |
 
 ## Transfers
 
 | Out | In |
 | --- | --- |
-| Rogers | Wirtz |
+| Dewsbury-Hall | Groß |
+| E.Le Fée | Ødegaard |
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW16 — E.Le Fée (+7.0 pts)
-- **Bench Boost:** GW13 (+17.9 pts)
-- **Wildcard:** hold (1 suggested transfers, 0 hits)
+- **Triple Captain:** GW16 — Groß (+6.7 pts)
+- **Bench Boost:** GW13 (+16.8 pts)
+- **Wildcard:** hold (2 suggested transfers, 0 hits)
