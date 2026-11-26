@@ -10,16 +10,16 @@
 | Name | Team | Pos | Price | XP(1) | XP(H) | Role |
 | --- | --- | --- | --- | --- | --- | --- |
 | Roefs | SUN | GK | 4.8 | 5.12 | 38.69 |  |
-| Vuskovic | BHA | DEF | 5.3 | 4.82 | 34.45 |  |
-| Mitchell | CRY | DEF | 4.4 | 5.22 | 21.22 |  |
-| Richards | CRY | DEF | 4.9 | 5.63 | 25.76 |  |
 | Gabriel | ARS | DEF | 8.1 | 5.38 | 37.02 |  |
+| Richards | CRY | DEF | 4.9 | 5.63 | 25.76 |  |
+| Mitchell | CRY | DEF | 4.4 | 5.22 | 21.22 |  |
+| Vuskovic | BHA | DEF | 5.3 | 4.91 | 34.39 |  |
 | Ødegaard | ARS | MID | 6.7 | 5.04 | 35.69 | (VC) |
-| Groß | BHA | MID | 6.3 | 11.09 | 39.48 | (C) |
 | Wirtz | LIV | MID | 7.4 | 4.37 | 36.0 |  |
-| Barry | EVE | FWD | 5.7 | 4.68 | 32.07 |  |
+| Groß | BHA | MID | 6.3 | 10.93 | 39.22 | (C) |
 | Evanilson | BOU | FWD | 6.6 | 4.91 | 36.81 |  |
 | N.Jackson | AVL | FWD | 7.3 | 4.07 | 29.83 |  |
+| Barry | EVE | FWD | 5.7 | 4.68 | 32.07 |  |
 
 ## Bench
 
@@ -36,6 +36,6 @@ _Hold — no transfer beats a 4-pt hit._
 
 ## Chip Recommendations
 
-- **Triple Captain:** GW16 — Groß (+6.9 pts)
+- **Triple Captain:** GW16 — Groß (+6.7 pts)
 - **Bench Boost:** GW13 (+16.8 pts)
 - **Wildcard:** hold (0 suggested transfers, 0 hits)
